@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  # The Orca release whose bundled CLI runs the plugin checks. engines.orca is >=1.4.252; bump this on purpose.
+  ORCA_VERSION: '1.4.255'
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - id: bun
+        run: echo "version=$(tr -d '[:space:]' < .bun-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+
+      - name: Test
+        run: bun test
+
+      - name: Install the Orca CLI (pinned release, extracted without installing the app)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/orca.deb" \
+            "https://github.com/stablyai/orca/releases/download/v${ORCA_VERSION}/orca-ide_${ORCA_VERSION}_amd64.deb"
+          dpkg -x "$RUNNER_TEMP/orca.deb" "$RUNNER_TEMP/orca"
+          echo "ORCA=$RUNNER_TEMP/orca/opt/Orca/resources/bin/orca-ide" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/orca/opt/Orca/resources/bin/orca-ide" --version
+
+      - name: Plugin validate
+        run: '"$ORCA" plugin validate .'
+
+      - name: Plugin check
+        run: '"$ORCA" plugin check .'
+
+      - name: Plugin inspect
+        run: '"$ORCA" plugin inspect . --json'
+
+      - name: The tag matches the manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(node -p "require('./orca-plugin.json').version" 2>/dev/null || bun -e "console.log(require('./orca-plugin.json').version)")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match orca-plugin.json version $version." >&2
+            exit 1
+          fi
