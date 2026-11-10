@@ -36,7 +36,7 @@ local.agent-hub-companion 0.1.0 (trusted-worker)
   - Read and change the plugin's own settings
   adds panels: agent-hub
   Loading or enabling it needs --approve <fingerprint>; Orca prints the fingerprint.
-Content hash: 4c49beba9f2d10e8554e7fec3c5ae2d0e6f0dbf6301c0a6d65ae6da59cff5080 (32 files, 210251 bytes)
+Content hash: fee2143ef2b970c1f6d45a44ca8c6376ce2c98121c83443867a3ca384673767b (36 files, 222630 bytes)
 ```
 
-Note: the content hash covers every file of the plugin folder, `receipts/` included, so it changes whenever a receipt changes. The hash that counts is the one `inspect` prints for the tagged tree. The full JSON of this run is `inspect.json`.
+Note: the content hash covers every file of the plugin folder, `receipts/` and `contract/` included, so it changes whenever one of them changes. The hash that counts is the one `inspect` prints for the tagged tree. The full JSON of this run is `inspect.json`.
