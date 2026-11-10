@@ -2,8 +2,9 @@
 
 Task O1 of [#1198](https://github.com/STAIxBWLB/agent-hub/issues/1198), on the frozen
 [O0 host contract](host-contract-v1.md). **Optional and removable.** ahub and Orca each keep all
-of their own functionality without it, and nothing in the ahub package depends on it: this folder is not in
-the npm `files` list, and no file under `src/` refers to it.
+of their own functionality without it, and nothing in the ahub package depends on it. This repository
+(moved out of agent-hub by [#1387](https://github.com/STAIxBWLB/agent-hub/issues/1387)) reads only what
+[`contract/companion-cli-v1.json`](contract/companion-cli-v1.json) lists of ahub's CLI.
 
 ## What it does
 
@@ -99,8 +100,8 @@ Nothing installs or enables itself, and `ahub setup` and Orca's settings never t
 offline, which does not contact the app:
 
 ```sh
-orca plugin validate integrations/orca
-orca plugin inspect integrations/orca      # shows the access it asks for and its content hash
+orca plugin validate .
+orca plugin inspect .      # shows the access it asks for and its content hash
 ```
 
 Load it as a development plugin into **an isolated Orca profile** (never your everyday one for a
@@ -109,8 +110,8 @@ first run). The isolation mechanism of your Orca build must be confirmed before 
 with the fingerprint Orca just printed:
 
 ```sh
-orca plugin dev load integrations/orca                     # prints the fingerprint and exits 3 until approved
-orca plugin dev load integrations/orca --approve <fingerprint>
+orca plugin dev load .                     # prints the fingerprint and exits 3 until approved
+orca plugin dev load . --approve <fingerprint>
 orca plugin list
 orca plugin logs local.agent-hub-companion
 ```
@@ -119,7 +120,7 @@ Disable or remove it, in this order of reach:
 
 ```sh
 orca plugin disable local.agent-hub-companion              # keep it installed, turn it off
-orca plugin dev unload integrations/orca                   # remove the development folder
+orca plugin dev unload .                   # remove the development folder
 orca plugin uninstall <publisher>.agent-hub-companion      # if it was installed from a source instead
 ```
 

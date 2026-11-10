@@ -22,8 +22,8 @@ contents, one-time links or task text in this file: ids and counts only.
 
 | # | Step | Record |
 | --- | --- | --- |
-| 1 | `orca plugin validate integrations/orca` and `orca plugin inspect integrations/orca` | exit codes; the access shown matches README "Capabilities asked for" (yes / no) |
-| 2 | `orca plugin dev load integrations/orca`, then `--approve <fingerprint>` | approval needed (yes / no); loaded (yes / no) |
+| 1 | `orca plugin validate .` and `orca plugin inspect .` | exit codes; the access shown matches README "Capabilities asked for" (yes / no) |
+| 2 | `orca plugin dev load .`, then `--approve <fingerprint>` | approval needed (yes / no); loaded (yes / no) |
 | 3 | In Settings, list this Mac's host id(s) under "Host ids that mean this Mac" (or turn on the missing-host option) | the host id Orca reports for your workspace is shown or null (state which, not the value) |
 | 4 | Open the agent-hub panel | the workspace is listed and selectable (yes / no); a refusal sentence if not |
 | 5 | Select the workspace, click **Open dashboard** | actions counted after selection: ___; browser opened by ahub (yes / no); a one-time link button appeared (yes / no); Orca consent prompt appeared (yes / no) |
@@ -37,7 +37,7 @@ contents, one-time links or task text in this file: ids and counts only.
 | 10 | `orca plugin disable local.agent-hub-companion` | disabled (yes / no) |
 | 11 | After disabling: same counts as step 9 | agents ___; worktrees ___; terminals ___; unchanged (yes / no) |
 | 12 | With the plugin disabled, run `ahub console` and `ahub ui` yourself in a terminal in that workspace, and use Orca normally | both worked (yes / no); Orca unaffected (yes / no) |
-| 13 | `orca plugin dev unload integrations/orca` (or uninstall) | removed (yes / no); `orca plugin list` no longer shows it (yes / no) |
+| 13 | `orca plugin dev unload .` (or uninstall) | removed (yes / no); `orca plugin list` no longer shows it (yes / no) |
 | 14 | `orca plugin logs local.agent-hub-companion` before removal | the log holds only lines like `entry.open: ok` and no path, name, link or output (yes / no) |
 
 ## Terminal focus recheck (O4, person-run leg)

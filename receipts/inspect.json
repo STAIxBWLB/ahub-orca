@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "result": {
+    "path": "<repo>",
+    "file": "<repo>/orca-plugin.json",
+    "kind": "plugin",
+    "valid": true,
+    "errors": [],
+    "plugin": {
+      "pluginKey": "local.agent-hub-companion",
+      "name": "agent-hub",
+      "version": "0.1.0",
+      "needsApproval": true,
+      "grants": {
+        "execution": "trusted-worker",
+        "executionDescription": "Runs its own code in a separate Node.js process on the Orca host, with your user account’s access to that machine.",
+        "capabilities": [
+          {
+            "kind": "workspace:read",
+            "description": "Read the name, branch, and terminal list of your focused workspace, and get notified when workspaces are created or removed"
+          },
+          {
+            "kind": "workspace:write",
+            "description": "Open your workspaces and their files in Orca, and run its built-in commands"
+          },
+          {
+            "kind": "terminal:send",
+            "description": "Type and run commands in your terminals, local and SSH"
+          },
+          {
+            "kind": "settings:own",
+            "description": "Read and change the plugin's own settings"
+          }
+        ],
+        "contributions": [
+          {
+            "kind": "panels",
+            "name": "agent-hub"
+          }
+        ]
+      }
+    },
+    "contentHash": "6bf145d643b0d0c85dcc06e535b1184664c34d905ebcbd0dfeb8b5f2d9821099",
+    "fileCount": 33,
+    "totalBytes": 210950
+  }
+}

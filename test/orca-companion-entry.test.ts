@@ -2,7 +2,6 @@ import { afterEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { shellQuote as packageShellQuote } from "../src/cli/shell-quote.ts";
 import { FakeOrcaCompanionHost, type OrcaCompanionFixtureWorkspace } from "./helpers/orca-companion-host.ts";
 import { FakeOrcaCompanionCli, type OrcaCompanionFixtureCliResponse } from "./fakes/orca-companion-cli.ts";
 
@@ -14,9 +13,9 @@ const temp = (name: string) => { const dir = realpathSync(mkdtempSync(join(tmpdi
 
 // The plugin folder is plain .mjs (Orca loads it as is, with no build), so it has no declarations; the tests rely on the shapes asserted below.
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const companion: any = await import("../integrations/orca/src/companion.mjs");
+const companion: any = await import("../src/companion.mjs");
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const worker: any = await import("../integrations/orca/src/worker.mjs");
+const worker: any = await import("../src/worker.mjs");
 
 /** The O0 fake offers four methods and no `terminal.create`; this wrapper adds that one method, recorded here and nowhere else, and leaves the O0 file unchanged. */
 class TestHost {
@@ -176,8 +175,6 @@ test("AC6: a path with spaces and shell metacharacters is only ever the working 
     expect(command).not.toContain("NEVER");
   }
   expect(s.fake.openedWorkspaceIds).toEqual(["ws-a", "ws-a"]);
-  expect(companion.shellQuote("it's $(x)")).toBe(packageShellQuote("it's $(x)"));
-  for (const probe of ["", "a b", "'", "''", "$(x)", "`x`", "a\nb", "é", "\\", "a;b&c|d"]) expect(companion.shellQuote(probe)).toBe(packageShellQuote(probe));
 });
 
 test("AC6: an invalid CLI response opens nothing, and its text is never returned or logged", async () => {
@@ -222,7 +219,7 @@ test("AC6: the one-time link is returned once as a transient value, never logged
   expect(JSON.stringify(s.host.calls)).not.toContain("ONE-TIME-TICKET");
   // the worker never asks the host for storage or secrets, so there is nowhere the link could be kept
   expect(s.host.calls.filter(m => /^(storage|secrets)\./.test(m))).toEqual([]);
-  expect(readFileSync(join(import.meta.dir, "../integrations/orca/src/worker.mjs"), "utf8")).not.toMatch(/storage\.(set|get)|secrets\./);
+  expect(readFileSync(join(import.meta.dir, "../src/worker.mjs"), "utf8")).not.toMatch(/storage\.(set|get)|secrets\./);
   // The worker cannot open it: shell.openExternal is a panel and editor method, and the host refuses it to a worker whatever the gesture.
   await expect(s.fake.call("shell.openExternal", { url: link }, { userGesture: true })).rejects.toMatchObject({ code: "not_permitted" });
   expect(s.fake.externalNavigation).toEqual([]);
@@ -299,24 +296,24 @@ test("the real child-process port: fixed argv, no shell, the folder as cwd only,
 });
 
 test("the manifest asks for exactly the host methods the worker uses and nothing broader", () => {
-  const manifest = JSON.parse(readFileSync(join(import.meta.dir, "../integrations/orca/orca-plugin.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8"));
   expect(manifest.manifestVersion).toBe(2); expect(manifest.execution).toBe("trusted-worker"); expect(manifest.pluginApi).toBe(1);
   expect(manifest.capabilities.map((c: { kind: string }) => c.kind).sort()).toEqual(["settings:own", "terminal:send", "workspace:read", "workspace:write"]);
   for (const forbidden of ["agent:launch", "agent:read", "terminal:read", "secrets:own", "storage:own", "notifications:show", "appearance:write"]) expect(manifest.capabilities.map((c: { kind: string }) => c.kind)).not.toContain(forbidden);
   expect(manifest.contributes.hooks).toBeUndefined(); expect(manifest.contributes.events).toBeUndefined(); expect(manifest.contributes.commands).toBeUndefined();
-  const source = readFileSync(join(import.meta.dir, "../integrations/orca/src/worker.mjs"), "utf8");
+  const source = readFileSync(join(import.meta.dir, "../src/worker.mjs"), "utf8");
   const used = [...new Set([...source.matchAll(/host\.(?:call|has)\("([a-z.A-Z]+)"/g)].map(m => m[1]))].sort();
   expect(used).toEqual(["settings.get", "terminal.create", "workspace.list", "workspace.open"].filter(m => used.includes(m)));
   for (const verb of ["approve", "assign", "complete", "retry", "stop", "upgrade", "task", "agent.launch", "terminal.sendText"]) expect(source, verb).not.toMatch(new RegExp(`host\\.call\\("[^"]*${verb.replace(".", "\\.")}`));
   // `--json` is forbidden on `ahub ui` (it prints a link, not JSON). It is allowed on `ahub status` (O2). So: no argv that holds both "ui" and "--json", in the source or at runtime.
   expect(source).not.toMatch(/\[\s*"ui"\s*,[^\]]*--json/);
   const noComments = (text: string) => text.replace(/^\s*\/\/.*$/gm, "").replace(/\s\/\/ .*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  expect(noComments(readFileSync(join(import.meta.dir, "../integrations/orca/src/companion.mjs"), "utf8"))).not.toMatch(/--json/);
+  expect(noComments(readFileSync(join(import.meta.dir, "../src/companion.mjs"), "utf8"))).not.toMatch(/--json/);
 });
 
 test("the panel keeps nothing: no storage, no innerHTML of CLI or workspace text, and the link is dropped after use or expiry", () => {
   // The code is checked, not its comments: strip `//` comments first (the page's own comment says it uses no localStorage).
-  const html = readFileSync(join(import.meta.dir, "../integrations/orca/panel/index.html"), "utf8").replace(/^\s*\/\/.*$/gm, "").replace(/\s\/\/ .*$/gm, "");
+  const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8").replace(/^\s*\/\/.*$/gm, "").replace(/\s\/\/ .*$/gm, "");
   expect(html).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie|storage\.set|secrets\./);
   expect(html).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
   expect(html).toContain("textContent");

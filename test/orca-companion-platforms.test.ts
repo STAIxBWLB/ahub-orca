@@ -11,10 +11,10 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const temp = (name: string) => { const dir = realpathSync(mkdtempSync(join(tmpdir(), `ahub-orca-${name}-`))); dirs.push(dir); return dir; };
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const worker: any = await import("../integrations/orca/src/worker.mjs");
+const worker: any = await import("../src/worker.mjs");
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const companion: any = await import("../integrations/orca/src/companion.mjs");
-const PLUGIN = join(import.meta.dir, "../integrations/orca");
+const companion: any = await import("../src/companion.mjs");
+const PLUGIN = join(import.meta.dir, "..");
 
 class TestHost {
   readonly calls: string[] = [];
@@ -124,7 +124,7 @@ test("AC8: a client without external navigation never holds a link: the panel ch
 
 test("the #791 nit: a failed status names a next step", () => {
   // @ts-ignore TS7016: untyped plain JavaScript by design
-  return import("../integrations/orca/src/status.mjs").then((status: any) => {
+  return import("../src/status.mjs").then((status: any) => {
     expect(status.STATUS_SENTENCES.failed).toContain("Run `ahub status` in a terminal in the project");
     for (const key of ["offline", "unavailable_version", "failed"]) expect(status.STATUS_SENTENCES[key]).toMatch(/`ahub [a-z]+`/);
   });
@@ -135,7 +135,4 @@ test("AC9: the support matrix and the docs say the same thing about what is clai
   const readme = readFileSync(join(PLUGIN, "README.md"), "utf8");
   for (const c of matrix.combinations) expect(readme, c.id).toContain(c.id);
   expect(readme).toMatch(/person-run/);
-  const dogfood = readFileSync(join(import.meta.dir, "../docs/dogfood.md"), "utf8");
-  expect(dogfood).toMatch(/#1198 O3/);
-  expect(dogfood).toMatch(/person-run/);
 });

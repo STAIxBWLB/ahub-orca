@@ -12,9 +12,9 @@ const dirs: string[] = [];
 afterEach(() => { setSystemTime(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const temp = (name: string) => { const dir = realpathSync(mkdtempSync(join(tmpdir(), `ahub-orca-${name}-`))); dirs.push(dir); return dir; };
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const status: any = await import("../integrations/orca/src/status.mjs");
+const status: any = await import("../src/status.mjs");
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const worker: any = await import("../integrations/orca/src/worker.mjs");
+const worker: any = await import("../src/worker.mjs");
 
 /** The shape `ahub status --json` prints (src/cli/output.ts StatusOutput), with private text planted where the real one holds free text. */
 const SECRET = { title: "PATIENT-RECORDS-TITLE", doing: "editing /Users/secret/ward7.txt", note: "TOPSECRET-NOTE", ticket: "ticket=ONE-TIME-9" };
@@ -160,7 +160,7 @@ test("stale-binding cases: a changed, missing, remote or re-pointed workspace is
 });
 
 test("refresh is a user action only: no poller, no transcript read, no write, no new host method, and the manifest is unchanged", () => {
-  const read = (rel: string) => readFileSync(join(import.meta.dir, "..", "integrations/orca", rel), "utf8");
+  const read = (rel: string) => readFileSync(join(import.meta.dir, "..", rel), "utf8");
   const code = (text: string) => text.replace(/^\s*\/\/.*$/gm, "").replace(/\s\/\/ .*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
   const worker_ = code(read("src/worker.mjs")), status_ = code(read("src/status.mjs")), panel = code(read("panel/index.html"));
   for (const [name, text] of [["worker", worker_], ["status", status_], ["panel", panel]] as const) {

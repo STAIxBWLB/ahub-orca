@@ -45,7 +45,7 @@ function fixture() {
     setTimeout(callback: () => void) { const id = ++nextTimer; timers.set(id, callback); return id; },
     clearTimeout(id: number) { timers.delete(id); },
   });
-  const html = readFileSync(join(import.meta.dir, "../integrations/orca/panel/index.html"), "utf8");
+  const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8");
   const script = /<script type="module">([\s\S]*?)<\/script>/.exec(html)?.[1];
   if (!script || !/\nrefresh\(\);\s*$/.test(script)) throw Error("actual panel entry point missing");
   // Expose only the initial call's completion, without changing any panel decision or asynchronous branch.

@@ -6,13 +6,13 @@ import { FakeOrcaCompanionHost } from "./helpers/orca-companion-host.ts";
 import { FakeOrcaCompanionCli } from "./fakes/orca-companion-cli.ts";
 
 // #1198 O1 AC3 and AC7 over the O0 fixtures: the companion never decides anything the existing screens decide, and removing it changes nothing else. The native leg (a real Orca profile) is
-// integrations/orca/native-receipt.md and is a person-run step; nothing here claims it.
+// native-receipt.md and is a person-run step; nothing here claims it.
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 // @ts-ignore TS7016: untyped plain JavaScript by design
-const worker: any = await import("../integrations/orca/src/worker.mjs");
+const worker: any = await import("../src/worker.mjs");
 const ROOT = realpathSync(join(import.meta.dir, ".."));
-const PLUGIN = join(ROOT, "integrations/orca");
+const PLUGIN = ROOT;
 
 function tree(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? tree(join(dir, entry.name)).map(p => `${entry.name}/${p}`) : [entry.name]);
@@ -62,17 +62,10 @@ test("AC7: the companion holds no state and no process, so disabling it leaves e
   expect(stat()).toEqual(before);
 });
 
-test("AC7: nothing in the ahub runtime depends on the companion, and the package ships exactly what it did", () => {
-  // no source file of the package refers to the plugin folder, to Orca's plugin API, or to the companion's names
-  const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]);
-  for (const file of walk(join(ROOT, "src")).filter(f => /\.(ts|js|mjs)$/.test(f))) {
-    const text = readFileSync(file, "utf8");
-    expect(text, file).not.toMatch(/integrations\/orca|agent-hub-companion|orca\.plugin|orca-plugin\.json/);
-  }
+// The ahub-side half of this case (nothing in ahub's src/, scripts/, package or marketplace names the companion) stays in agent-hub: test/companion-contract.test.ts (#1387 T0).
+test("AC7: the companion is self-contained: no runtime dependency, and it imports only node builtins and its own files", () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-  expect(pkg.files).not.toContain("integrations"); expect(pkg.files.join(" ")).not.toMatch(/integrations|orca/);
-  // O1 adds no runtime dependency: the one first-party package (AGENTS.md) is all there is.
-  expect(Object.keys(pkg.dependencies ?? {})).toEqual(["@staix/agent-mem"]);
+  expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
   // the plugin imports nothing from the package and nothing third-party: only node builtins and its own files
   for (const file of ["src/worker.mjs", "src/companion.mjs"]) {
     const imports = [...readFileSync(join(PLUGIN, file), "utf8").matchAll(/^import .* from "([^"]+)"/gm)].map(m => m[1]!);

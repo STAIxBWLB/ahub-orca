@@ -1,0 +1,10 @@
+{
+  "name": "ahub-orca",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}
