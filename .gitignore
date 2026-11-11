@@ -5,3 +5,6 @@ node_modules/
 /.agenthub/*.db*
 /.agenthub/config.json
 .worktrees/
+.agenthub/state/
+.agenthub/config.local.json
+.agenthub/routing.local.toml
