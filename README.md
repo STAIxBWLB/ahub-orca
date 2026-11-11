@@ -1,157 +1,166 @@
-# agent-hub companion for Orca (optional)
+# agent-hub for Orca
 
-Task O1 of [#1198](https://github.com/STAIxBWLB/agent-hub/issues/1198), on the frozen
-[O0 host contract](host-contract-v1.md). **Optional and removable.** ahub and Orca each keep all
-of their own functionality without it, and nothing in the ahub package depends on it. This repository
-(moved out of agent-hub by [#1387](https://github.com/STAIxBWLB/agent-hub/issues/1387)) reads only what
-[`contract/companion-cli-v1.json`](contract/companion-cli-v1.json) lists of ahub's CLI.
+<img src="assets/icon.png" alt="" width="64" align="right">
+
+**Open your project's agent-hub console or dashboard from Orca's sidebar.** Pick a workspace, then open
+its existing agent-hub screen in one click. It is optional and removable: ahub and Orca each keep all of
+their own functionality without it.
+
+[![Orca 1.4.252+](https://img.shields.io/badge/Orca-1.4.252%2B-0f766e)](COMPATIBILITY.md)
+[![macOS](https://img.shields.io/badge/platform-macOS%20local-475569)](#known-limitations)
+[![MIT license](https://img.shields.io/badge/license-MIT-475569)](LICENSE)
+[![CI](https://github.com/STAIxBWLB/ahub-orca/actions/workflows/ci.yml/badge.svg)](https://github.com/STAIxBWLB/ahub-orca/actions/workflows/ci.yml)
+
+Version **0.1.0** (not tagged yet). See the [changelog](CHANGELOG.md).
 
 ## What it does
 
-A panel in Orca's right sidebar lists Orca's workspaces. You select one, and it opens an
-**existing** agent-hub screen for it:
+A panel in Orca's right sidebar lists Orca's workspaces. You select one, and it opens an **existing**
+agent-hub screen for it:
 
 | Button | What happens | Where it runs |
 | --- | --- | --- |
-| Open dashboard | the worker runs `ahub ui` (no other argument) with the selected folder as its working directory. ahub opens its own browser. If ahub only prints a one-time link, the panel shows an "Open the link" button; clicking it is the gesture Orca requires to open it | a short-lived child of the plugin worker |
+| Open dashboard | runs `ahub ui` in the selected folder; ahub opens its own browser. If ahub only prints a one-time link, the panel shows an "Open the link" button | a short-lived child of the plugin worker |
 | Open console | Orca creates a terminal in that workspace running `'ahub' 'console'` | a terminal you can see and close |
 | Open family console | the same, running `'acon' 'ui'` | a terminal you can see and close |
+| Show status | reads the project's public status once and shows counts and states: agent-hub version, tasks by state, each peer's state and queue | read-only, only when you click |
 
-It never approves, assigns, completes, retries, stops or upgrades anything, starts a hub, or
-writes configuration. Those decisions stay in the screens it opens.
+It never approves, assigns, completes, retries, stops or upgrades anything, starts a hub, or writes
+configuration. Those decisions stay in the screens it opens.
 
-## Read-only status (O2)
+## Requirements
 
-"Show status" reads the selected project's public status and shows it as counts and closed words: the
-agent-hub version, tasks by state, and each peer's state with its queue length and whether it is attached.
-It is built by copying a closed list of fields out of `ahub status --json` (run with the folder as its working
-directory and nothing else). Every free-text field in that output is never read: no task title, no peer
-`doing` line, no notice, no path. The states stay distinct:
+- **Orca desktop 1.4.252 or newer** on macOS. Other platforms are refused; see [Known limitations](#known-limitations).
+- **agent-hub (`ahub`) installed** on the same Mac, on `PATH` or set in the plugin's "ahub executable" setting.
+  The companion reads only what the [companion CLI contract v1](contract/companion-cli-v1.json) lists;
+  see [COMPATIBILITY.md](COMPATIBILITY.md) for versions.
+- **An agent-hub project** in the workspace's folder. The console, dashboard and status need its hub
+  running (`ahub up`); the companion never starts one.
+- `acon` installed, only for "Open family console".
 
-| State | Meaning |
-| --- | --- |
-| running | read within the last minute, every field present |
-| stale | read more than a minute ago. Re-labelled from the panel's own clock when you return to it; nothing refreshes it |
-| partial | the hub answered but did not report some fields; the missing ones are named and never shown as 0 |
-| unavailable version | the hub answered without any field this view needs (an older agent-hub); it names the upgrade you can run, and does not run it |
-| offline | no hub is running for this project; it names `ahub up`, and does not start anything |
-| unknown | the reading carries no time |
+## Install
 
-**Refresh is only your click** (and re-drawing the panel when you return to it, which makes no request).
-There is no poller, no timer that reads status, and no transcript or terminal output is read. The status
-call re-verifies the exact workspace binding first, so a changed, missing, remote or re-pointed workspace is
-refused before `ahub` runs.
+Nothing installs or enables itself, and `ahub setup` never turns it on. Orca shows the access the plugin
+asks for, and you approve it before it runs.
 
-**There is no terminal focus.** The [O4 recheck](host-contract-v1.md#terminal-focus-recheck-o4-2026-11-09)
-on installed Orca 1.4.254 still found no documented mapping from a plugin terminal id to an
-`orca terminal switch` handle, so this companion never calls `orca terminal switch`, never reads a terminal
-and never replaces one. The console buttons always create a new terminal; to reach an existing one, select its
-tab in Orca or run `ahub console` yourself. Verified focus stays unsupported until a mapping is proven.
+**From a Git URL** (once `v0.1.0` is tagged):
 
-## Selection is exact
+1. Open **Settings → Plugins**.
+2. Choose **Add plugin → From a Git URL...** and enter `https://github.com/STAIxBWLB/ahub-orca#v0.1.0`.
+   Keep `#v0.1.0` at the end so the release tag is installed.
+3. Review and approve the **trusted worker** and the four capabilities listed under [Access and privacy](#access-and-privacy).
 
-A row is chosen by Orca's **workspace id**. A name or a branch only labels a row and never
-selects one (two workspaces can share both). A selection binds four values: id, host id, kind and
-the folder's real path on this Mac. Before every effect the worker re-reads a complete inventory and
-requires all four to be unchanged. Each of these refuses visibly, with a fixed sentence, and runs
-nothing: a duplicate id, a missing workspace, a truncated list, a malformed row, a changed id, host,
-kind or folder (including a symlink that was re-pointed), a host that is not declared to be this Mac,
-and a folder that is not a real absolute folder here.
+Or from a terminal: `orca plugin install STAIxBWLB/ahub-orca@v0.1.0`. It stops at the approval
+step and prints the fingerprint to approve.
 
-Orca leaves a workspace's host id empty for some workspaces, and the API does not say what a given id
-means. The plugin therefore runs nothing locally for a host it was not told is this Mac. In the
-plugin's settings, list the host ids that are this Mac (`localHostIds`), or turn on "Treat a missing
-host id as this Mac" if all your workspaces are local. Remote workspaces are never run here: the
-panel shows the command to run on that host.
-
-## Nothing is kept
-
-No CLI output, one-time link, task text or credential is written to plugin storage, a setting, a
-secret or the log. The worker's log lines are a handler name and a closed code (for example
-`entry.open: missing`). The selection lives in the panel's memory only. A one-time link is held in
-memory until it is used or 55 seconds pass (ahub's own expires after 60), then dropped. The worker
-requests no storage or secrets capability.
-
-## Capabilities asked for
-
-`workspace:read` (the inventory), `workspace:write` (show the workspace), `terminal:send` (create the
-console terminal; Orca requires this capability for `terminal.create`), `settings:own` (the three
-settings). Nothing else: no `agent:*`, no `terminal:read`, no hooks, events or commands. A trusted
-worker is full-access code that Orca runs only after you approve it, and Orca does not confine its
-filesystem or child processes; the fixtures model the companion's contract, not a sandbox.
-
-## Action counts
-
-Counted after the workspace is selected; waiting is not an action; one click or one submitted command
-is one action. These are **procedure** counts, not measured UI results (see "What is not proven").
-
-| Journey | Baseline without the companion | With the companion (procedure) | Against the "at most two" target |
-| --- | --- | --- | --- |
-| Local console | 2: open a terminal in the workspace, submit `ahub console` | 2: click Open console, then select the new terminal's tab (Orca creates it in the background) | within the target, **no fewer actions** than the baseline |
-| Local dashboard | 2: open a terminal, submit `ahub ui` | 1: click Open dashboard. 2 when ahub only prints a one-time link and the panel's "Open the link" click opens it; Orca's own consent prompt for an unknown web host is a further step | within the target; fewer by 1 only when ahub opens its own browser |
-| Family console | 2: open a terminal, submit `acon ui` | 2: click Open family console, then select the tab | within the target, **no fewer actions** than the baseline |
-
-Selecting the workspace is 1 action in every case, counted separately. Remote workspaces have no
-companion path: the baseline applies on the remote host.
-
-## Install and remove (explicit, in an isolated profile first)
-
-Nothing installs or enables itself, and `ahub setup` and Orca's settings never turn it on. Check it
-offline, which does not contact the app:
+**From a local checkout** (development, or before the first tag). Use an isolated Orca profile for a first run:
 
 ```sh
-orca plugin validate .
-orca plugin inspect .      # shows the access it asks for and its content hash
-```
-
-Load it as a development plugin into **an isolated Orca profile** (never your everyday one for a
-first run). The isolation mechanism of your Orca build must be confirmed before launching; see
-[native-receipt.md](native-receipt.md). Loading returns the authority review for code, and you approve it
-with the fingerprint Orca just printed:
-
-```sh
+orca plugin validate .                     # offline check
+orca plugin inspect .                      # the access it asks for and its content hash
 orca plugin dev load .                     # prints the fingerprint and exits 3 until approved
 orca plugin dev load . --approve <fingerprint>
-orca plugin list
-orca plugin logs local.agent-hub-companion
 ```
 
-Disable or remove it, in this order of reach:
+It is not listed in a plugin catalog yet.
+
+## Use
+
+1. Open **agent-hub** from the layers icon in Orca's right sidebar.
+2. Select a workspace. The row shows its name, branch, real folder and host.
+3. Choose **Open console**, **Open dashboard**, **Open family console** or **Show status**.
+
+Open console creates a new terminal in the background; select its tab to see it. "Refresh workspaces"
+reads Orca's list again. Status is read only when you click; an old reading is marked stale and is not
+refreshed for you.
+
+## Settings
+
+Under **Settings → Plugins → agent-hub**:
+
+| Setting | Default | Set it when |
+| --- | --- | --- |
+| Host ids that mean this Mac (`localHostIds`) | empty | your workspaces carry a host id. List the ids that are this Mac, comma separated (for example `local`). A workspace on any other host is treated as remote and nothing is run for it here |
+| Treat a missing host id as this Mac (`trustNullHostAsLocal`) | off | Orca leaves the host id empty and **all** your workspaces are on this Mac |
+| ahub executable (`ahubPath`) | empty (uses `ahub` from `PATH`) | Orca's environment cannot find `ahub`. Give the absolute path to a file named `ahub` |
+
+## Access and privacy
+
+The plugin asks for four capabilities, and nothing else:
+
+| Capability | Used for |
+| --- | --- |
+| `workspace:read` | listing Orca's workspaces |
+| `workspace:write` | showing the selected workspace in Orca |
+| `terminal:send` | creating the console terminal (Orca requires it for `terminal.create`) |
+| `settings:own` | reading the three settings above |
+
+- **Nothing is kept.** No CLI output, one-time link, task text or credential is written to plugin storage,
+  a setting or the log. The selection lives in the panel's memory only. A one-time dashboard link is held
+  in memory for at most 55 seconds, then dropped.
+- **Status is a closed projection.** Only counts, ids and fixed state words are copied out of `ahub status --json`;
+  no task title, peer activity line, notice or path is read.
+- **Selection is exact.** A workspace is chosen by Orca's workspace id, never by name or branch. Before every
+  action the worker re-reads the list and requires the same id, host, kind and real folder; otherwise it
+  refuses and runs nothing.
+- A trusted worker is full-access code once approved; Orca does not confine its files or child processes.
+  Treat it as code you run.
+
+## Troubleshooting
+
+Every refusal says what happened and runs nothing.
+
+| The panel says | Do this |
+| --- | --- |
+| Orca did not say which machine this workspace is on | set "Host ids that mean this Mac", or turn on "Treat a missing host id as this Mac" if all workspaces are local, then click Refresh workspaces |
+| This workspace is on another host | run `ahub console` in a terminal on that host |
+| The ahub command was not found | set "ahub executable" to the absolute path of `ahub` |
+| A plugin setting is not valid | "ahub executable" must be an absolute path to a file named `ahub` |
+| ahub did not succeed | start the project's hub with `ahub up` in a terminal, then try again |
+| No agent-hub is running for this project | run `ahub up` in the project |
+| This project's agent-hub is too old | upgrade it with `ahub upgrade` |
+| That workspace changed / is no longer in Orca's list | select it again |
+| The workspace's folder is not a real absolute folder on this Mac | check the workspace's folder in Orca |
+| This companion is not qualified on this operating system | open a terminal in the workspace and run `ahub console` |
+| The companion did not answer | disable and re-enable the plugin in Settings → Plugins, then check `orca plugin logs <plugin key>` |
+
+## Uninstall
 
 ```sh
-orca plugin disable local.agent-hub-companion              # keep it installed, turn it off
-orca plugin dev unload .                   # remove the development folder
-orca plugin uninstall <publisher>.agent-hub-companion      # if it was installed from a source instead
+orca plugin disable <publisher>.agent-hub-companion     # keep it installed, turn it off
+orca plugin uninstall <publisher>.agent-hub-companion   # remove it
+orca plugin dev unload .                                # remove a development folder
 ```
 
-Disabling or removing it stops no agent, removes no worktree, edits no hub state and restores no
-setting, because it never changed any. Remove its plugin folder state with the commands above only.
+The plugin key is `local.agent-hub-companion` for a development folder. Removing it stops no agent,
+removes no worktree, edits no hub state and restores no setting, because it never changed any.
 
-## Platforms and support matrix (O3)
+## Known limitations
 
-[`support-matrix.json`](support-matrix.json) gives each combination its own verdict. A combination is
-`supported` only when its receipt file exists and no longer says NOT RUN, and a test enforces that. **None is
-supported today**: each leg needs a person's machines or accounts, so each is a **person-run** receipt that has
-not been run. No identity check is loosened for any combination.
+[`support-matrix.json`](support-matrix.json) gives each combination its own verdict. A combination becomes
+`supported` only when its **person-run** receipt has been run. None has been run yet, so even macOS is
+checked against fixtures only.
 
 | Combination | Verdict | What happens | Receipt (person-run, NOT RUN) |
 | --- | --- | --- | --- |
 | `macos-local-desktop` | fixture only | everything above, checked against fixtures and real scripts | [native-receipt.md](native-receipt.md) |
-| `remote-workspace` | unsupported | a workspace whose host id is not declared to be this Mac is refused before anything runs; you are shown `'ahub' 'console'` to run on that host; a remote loopback link is never opened locally | [receipts/remote.md](receipts/remote.md) |
-| `windows-desktop` | unsupported | every workspace is refused with `unsupported_platform` and nothing runs: the entries build a POSIX-quoted command line and expect an `ahub` executable | [receipts/windows.md](receipts/windows.md) |
-| `browser-or-mobile-client` | unsupported | where the client has no external navigation, no link is held or shown; it says to run `ahub ui` on the machine that runs the project. Mobile is **not** inferred from SSH reachability or from Orca offering mobile pairing | [receipts/browser-mobile.md](receipts/browser-mobile.md) |
+| `remote-workspace` | unsupported | refused before anything runs; you are shown `'ahub' 'console'` to run on that host | [receipts/remote.md](receipts/remote.md) |
+| `windows-desktop` | unsupported | every workspace is refused with `unsupported_platform` | [receipts/windows.md](receipts/windows.md) |
+| `browser-or-mobile-client` | unsupported | no link is held or shown; it says to run `ahub ui` on the machine that runs the project | [receipts/browser-mobile.md](receipts/browser-mobile.md) |
 | `linux-desktop` | unsupported | never exercised and not claimed | none |
 
-## What is not proven
+- **No terminal focus.** Open console always creates a new terminal. Orca documents no mapping from a plugin
+  terminal id to a terminal it can switch to, so the companion never focuses, reads or replaces one.
+- **No background refresh.** Status and the workspace list are read only when you click.
 
-- **Native behaviour.** Everything above is checked against the O0 fake host and CLI fixtures and against
-  Orca's own offline `orca plugin validate`. No call has run against a real Orca plugin host from this
-  code. [native-receipt.md](native-receipt.md) is the person-run leg that records the observed actions,
-  the outcome and the disable and standalone checks; until it is filled in, the action counts above are
-  the procedure counts and the native result is unknown.
-- **Terminal focus.** There is no focus-existing-console action. O0 found no documented mapping from a
-  plugin terminal id to a `orca terminal switch` handle; O4 rechecked 1.4.254 with the same verdict.
-  "Open console" always creates a terminal.
-- **Remote, Windows, browser and mobile** are unqualified (O3). A browser client has no desktop external
-  navigation, so there the dashboard button reports `ahub ui` to run instead of a link.
-- **Security.** Approved capabilities do not confine a trusted worker. Treat the plugin as code you run.
+## More
+
+- [docs/design.md](docs/design.md): the design and verification record (selection rules, status states,
+  action counts, what is not proven).
+- [COMPATIBILITY.md](COMPATIBILITY.md): Orca, ahub and contract versions.
+- [RELEASE.md](RELEASE.md): how a version is released.
+- [host-contract-v1.md](host-contract-v1.md): the frozen Orca host contract the companion is built on.
+
+## License
+
+[MIT](LICENSE)
