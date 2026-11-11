@@ -197,6 +197,7 @@ async function readProjects(forList) {
     li.firstTitle.append(tag);
     li.searchText += " hub " + state;
   }
+  applyFilter();
 }
 function rowLines(li, row) {
   const title = document.createElement("div"), name = document.createElement("span"), branch = document.createElement("span");
@@ -254,14 +255,16 @@ rows.addEventListener("keydown", event => {
     next.tabIndex = 0; next.focus();
   } else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.target.chooseRow(); }
 });
-filter.addEventListener("input", () => {
+// Re-run on every filter change and again when badges arrive, since a badge adds words a query typed earlier may match.
+function applyFilter() {
   const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const li of [...rows.children, ...offrows.children]) li.hidden = !words.every(word => li.searchText.includes(word));
   // Keep exactly one visible row reachable by Tab: the selected one when it is shown, else the first shown.
   const visible = [...rows.children].filter(li => !li.hidden);
   const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible[0];
   for (const li of rows.children) li.tabIndex = li === stop ? 0 : -1;
-});
+}
+filter.addEventListener("input", applyFilter);
 
 async function refresh() {
   const requestGeneration = ++generation;

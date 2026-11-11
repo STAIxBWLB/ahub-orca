@@ -296,6 +296,14 @@ test("U3: after a list with openable rows the panel asks projects.read once and 
   expect(f.get("setup").hidden).toBe(true);
 });
 
+test("U3: a query typed before the badges arrive is applied again when they do, with one visible Tab stop", async () => {
+  const f = fixture(); await f.listWith(many); const ask = projectsRequest(f);
+  f.get("filter").input("running"); expect(f.get("rows").children.every(li => li.hidden)).toBe(true);
+  ask.reply.resolve({ ok: true, hubs: [hub("w4", "running", { root: "/fixture/w4" })] }); await Promise.resolve(); await Promise.resolve();
+  const rows = f.get("rows").children;
+  expect(rows.filter(li => !li.hidden)).toEqual([rows[4]]); expect(rows.filter(li => li.tabIndex === 0)).toEqual([rows[4]]);
+});
+
 test("U3: a projects reply for an older list is dropped; a selection made meanwhile keeps its badges and stays selected", async () => {
   const f = fixture(); await f.initial(); const first = projectsRequest(f);
   await f.choose(1); first.reply.resolve({ ok: true, hubs: [hub("b", "stopped")] }); await Promise.resolve(); await Promise.resolve();
