@@ -29,6 +29,7 @@
   #actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   #status { margin-top: 10px; min-height: 2.8em; }
   #status.bad { color: var(--orca-destructive, #c0392b); }
+  li.row code { margin-right: 6px; }
   #cmdbox { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
   #cmdbox[hidden] { display: none; }
   #statusbox { margin-top: 10px; padding: 8px; border: 1px solid var(--orca-border); border-radius: var(--orca-radius, 6px); background: var(--orca-card); }
@@ -186,10 +187,12 @@ function renderRows(list) {
       why.className = "note"; why.textContent = row.guidance;
       li.append(why);
       if (row.command) {
-        const copy = document.createElement("button");
-        copy.type = "button"; copy.textContent = "Copy " + row.command;
-        copy.addEventListener("click", () => copyText(row.command, copy, null));
-        li.append(copy);
+        const line = document.createElement("div"), command = document.createElement("code"), copy = document.createElement("button");
+        command.textContent = row.command;
+        copy.type = "button"; copy.textContent = "Copy command";
+        copy.addEventListener("click", () => copyText(row.command, copy, command));
+        line.append(command, copy);
+        li.append(line);
       }
       offrows.append(li);
     }
@@ -211,6 +214,10 @@ rows.addEventListener("keydown", event => {
 filter.addEventListener("input", () => {
   const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const li of [...rows.children, ...offrows.children]) li.hidden = !words.every(word => li.searchText.includes(word));
+  // Keep exactly one visible row reachable by Tab: the selected one when it is shown, else the first shown.
+  const visible = [...rows.children].filter(li => !li.hidden);
+  const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible[0];
+  for (const li of rows.children) li.tabIndex = li === stop ? 0 : -1;
 });
 
 async function refresh() {

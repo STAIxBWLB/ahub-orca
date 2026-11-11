@@ -21,6 +21,7 @@ class Element {
   append(...nodes: Element[]) { this.children.push(...nodes); }
   replaceChildren(...nodes: Element[]) { this.children = nodes; }
   setAttribute(key: string, value: string) { this.attributes.set(key, value); }
+  getAttribute(key: string) { return this.attributes.get(key) ?? null; }
   addEventListener(event: string, listener: (event?: any) => unknown) { this.listeners.set(event, listener); }
   click() { return Promise.resolve(this.listeners.get("click")?.()); }
   focus() { this.focused = true; }
@@ -224,13 +225,29 @@ test("U2: the filter appears only for more than 8 rows and hides rows that do no
   f.get("rows").key("ArrowDown", visible[0]!); expect(visible[0]!.focused).toBe(true);
 });
 
+test("U2: after every filter change exactly one visible row is the Tab stop, the selected one when shown", async () => {
+  const f = fixture(); await f.listWith(many);
+  const filter = f.get("filter"), rows = f.get("rows").children;
+  const stops = () => rows.filter(li => li.tabIndex === 0);
+  expect(stops()).toEqual([rows[0]]);
+  filter.input("w3"); expect(stops()).toEqual([rows[3]]); expect(rows[3]!.hidden).toBe(false); // the old stop (w0) is hidden; Tab from the search box reaches w3
+  f.get("rows").key("Enter", rows[3]!); expect(f.state().selected?.id).toBe("w3");
+  filter.input("w"); expect(stops()).toEqual([rows[3]]); // the selected row stays the stop while shown
+  filter.input("billing"); expect(stops()).toEqual([rows[7]]);
+  filter.input("nothing matches"); expect(stops()).toEqual([]);
+});
+
 test("U2: rows that cannot be opened fold away with their reason and a copy of the worker's command", async () => {
   const f = fixture(); await f.listWith([workspaces[0], remoteRow]);
   expect(f.get("rows").children).toHaveLength(1); expect(f.get("unavailable").hidden).toBe(false);
   expect(f.get("offcount").textContent).toBe("1 not available on this Mac");
-  const off = f.get("offrows").children[0]!, copy = off.children.at(-1)!;
+  const off = f.get("offrows").children[0]!, line = off.children.at(-1)!, [command, copy] = line.children as [Element, Element];
   expect(off.children.map(c => c.textContent)).toContain("This workspace is on another host.");
+  expect(command.textContent).toBe("'ahub' 'console'"); expect(copy.textContent).toBe("Copy command");
   await copy.click(); expect(f.copies).toEqual(["'ahub' 'console'"]); expect(copy.textContent).toBe("Copied");
+  // a failed copy keeps the command visible and selects it for Cmd+C
+  f.breakCopy(); await copy.click();
+  expect(f.copies).toHaveLength(1); expect(f.selections).toEqual([command]); expect(command.textContent).toBe("'ahub' 'console'"); expect(copy.textContent).toBe("Press Cmd+C to copy");
   expect(f.requests).toHaveLength(1); // copying asks the worker nothing and runs nothing
   const none = fixture(); await none.listWith([remoteRow]);
   expect(none.get("status").textContent).toContain("No workspace can be opened on this Mac");
