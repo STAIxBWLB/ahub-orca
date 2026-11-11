@@ -2,7 +2,7 @@
 
 | Plugin | Orca (`engines.orca`) | Checked with Orca CLI | Platform | ahub CLI contract | ahub |
 | --- | --- | --- | --- | --- | --- |
-| 0.1.0 | `>=1.4.252` | 1.4.255 (CI pin) | macOS, local workspaces | [companion-cli v1](contract/companion-cli-v1.json) | the release that ships contract v1 (0.37.0, not released yet) and later v1 releases |
+| 0.1.0 | `>=1.4.252` | 1.4.255 (CI pin) | macOS, local workspaces | [companion-cli v1](contract/companion-cli-v1.json) | 0.37.0 (ships contract v1) and later v1 releases |
 
 - **Orca.** `engines.orca` is the oldest Orca the manifest may load on. CI runs `plugin validate`, `check` and
   `inspect` with the pinned CLI in `.github/workflows/ci.yml` (`ORCA_VERSION`). No version is claimed as
