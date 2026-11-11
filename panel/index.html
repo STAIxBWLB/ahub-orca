@@ -186,9 +186,11 @@ async function readProjects(forList) {
   try { result = await ask("projects.read", undefined); } catch { return; }
   if (forList !== listGeneration || !result) return;
   if (!result.ok) { if (result.refusal === "cli_missing") setup(result.guidance); return; }
+  // A badge goes only on a row whose drawn binding is the one the worker matched: same id, host, kind and real root. A workspace that changed in between gets none.
   for (const li of rows.children) {
-    const state = result.hubs[li.workspaceId];
-    if (state === undefined) continue;
+    const hub = result.hubs.find(h => h.id === li.binding.id && h.hostId === li.binding.hostId && h.root === li.binding.root && h.kind === li.binding.kind);
+    if (!hub) continue;
+    const state = hub.state;
     const tag = document.createElement("span");
     tag.className = "badge" + (state === "running" ? " good" : "");
     tag.textContent = state === "unknown" ? "hub" : "hub " + state;
@@ -200,7 +202,7 @@ function rowLines(li, row) {
   const title = document.createElement("div"), name = document.createElement("span"), branch = document.createElement("span");
   name.className = "name"; name.textContent = row.name; branch.className = "note"; branch.textContent = row.branch ? "  [" + row.branch + "]" : "";
   title.append(name, branch);
-  li.firstTitle = title; li.workspaceId = row.id;
+  li.firstTitle = title; li.binding = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
   const root = document.createElement("div");
   root.className = "root"; root.textContent = row.root;
   const host = document.createElement("div");

@@ -26,7 +26,7 @@ function setup(options: { rows?: (a: string, b: string) => OrcaCompanionFixtureW
 }
 const out = (list: unknown) => [{ stdout: JSON.stringify(list), exitCode: 0 }];
 
-test("matching projects get their hub state by workspace id; nothing but that map leaves", async () => {
+test("matching projects get their hub state per bound workspace; nothing of ahub's output but the state leaves", async () => {
   const probe = setup(); const link = join(probe.base, "link-to-a"); symlinkSync(probe.a, link);
   const list = [
     { id: "p1", root: link, state: "running", stateDir: "/secret/state", status: { doing: "secret task title" } }, // a symlinked root still matches its real folder
@@ -39,25 +39,40 @@ test("matching projects get their hub state by workspace id; nothing but that ma
     { id: "ws-b", kind: "folder", name: "b", path: probe.b, branch: null, hostId: "local" },
   ], ahub: out(list) });
   const result = await s.instance.projects(undefined);
-  expect(result).toEqual({ ok: true, hubs: { "ws-a": "running", "ws-b": "unknown" } });
+  expect(result).toEqual({ ok: true, hubs: [
+    { id: "ws-a", hostId: "local", root: probe.a, kind: "worktree", state: "running" },
+    { id: "ws-b", hostId: "local", root: probe.b, kind: "folder", state: "unknown" },
+  ] });
   expect(s.cli.calls).toHaveLength(1);
   expect(s.cli.calls[0]).toMatchObject({ argv: ["projects", "--json"], cwd: probe.a, hostId: "local" });
   expect(s.cli.calls[0]!.maxOutputBytes).toBeGreaterThanOrEqual(1024 * 1024);
-  expect(JSON.stringify(result)).not.toMatch(/secret|\/|p1|p2/);
+  expect(JSON.stringify(result)).not.toMatch(/secret|link-to-a|gone|elsewhere|"p1"|"p2"/);
 });
 
 test("a stopped hub is reported as stopped, and a workspace that is not a project gets no entry", async () => {
   const probe = setup();
   const s = setup({ rows: () => [{ id: "ws-a", kind: "worktree", name: "a", path: probe.a, branch: "main", hostId: "local" }, { id: "ws-b", kind: "folder", name: "b", path: probe.b, branch: null, hostId: "local" }],
     ahub: out([{ id: "p", root: probe.b, state: "stopped" }]) });
-  expect(await s.instance.projects(undefined)).toEqual({ ok: true, hubs: { "ws-b": "stopped" } });
+  expect(await s.instance.projects(undefined)).toEqual({ ok: true, hubs: [{ id: "ws-b", hostId: "local", root: probe.b, kind: "folder", state: "stopped" }] });
+});
+
+test("every workspace on a project's folder gets its state, including two that share one folder", async () => {
+  const probe = setup(); const alias = join(probe.base, "alias"); symlinkSync(probe.a, alias);
+  const s = setup({ rows: () => [
+    { id: "ws-1", kind: "worktree", name: "one", path: probe.a, branch: "main", hostId: "local" },
+    { id: "ws-2", kind: "folder", name: "two", path: alias, branch: null, hostId: "local" }, // an alias of the same folder binds to the same real root
+  ], ahub: out([{ id: "p", root: probe.a, state: "running" }]) });
+  expect(await s.instance.projects(undefined)).toEqual({ ok: true, hubs: [
+    { id: "ws-1", hostId: "local", root: probe.a, kind: "worktree", state: "running" },
+    { id: "ws-2", hostId: "local", root: probe.a, kind: "folder", state: "running" },
+  ] });
 });
 
 test("a list with no workspace bound on this Mac runs nothing", async () => {
   const remote = setup({ rows: (a, b) => [{ id: "r", kind: "worktree", name: "r", path: a, branch: null, hostId: "ssh-box" }, { id: "n", kind: "folder", name: "n", path: b, branch: null, hostId: null }] });
-  expect(await remote.instance.projects(undefined)).toEqual({ ok: true, hubs: {} }); expect(remote.cli.calls).toHaveLength(0);
+  expect(await remote.instance.projects(undefined)).toEqual({ ok: true, hubs: [] }); expect(remote.cli.calls).toHaveLength(0);
   const win = setup({ platform: "win32" });
-  expect(await win.instance.projects(undefined)).toEqual({ ok: true, hubs: {} }); expect(win.cli.calls).toHaveLength(0);
+  expect(await win.instance.projects(undefined)).toEqual({ ok: true, hubs: [] }); expect(win.cli.calls).toHaveLength(0);
 });
 
 test("a missing ahub is cli_missing (the setup check); every other failure is a refusal with no partial map", async () => {

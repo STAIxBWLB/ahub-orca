@@ -130,7 +130,7 @@ export function createCompanion(ports) {
   /**
    * Which listed workspaces are agent-hub projects and whether their hub runs, for the row badges and the setup check. The panel asks after it has drawn a list; this re-reads and re-binds
    * the inventory itself and runs `ahub projects --json` only when a workspace binds on this Mac (in the first one's folder), so a remote-only or unsupported list runs nothing. Only the
-   * workspace id -> state map leaves; a missing executable is `cli_missing`, which the panel reports as a setup problem.
+   * matched bindings and their states leave, so the panel can badge only a row whose binding is still the same; a missing executable is `cli_missing`, a setup problem for the panel.
    */
   async function readProjects(input) {
     if (input !== undefined) return done("projects.read", refuse("bad_request"));
@@ -141,7 +141,7 @@ export function createCompanion(ports) {
     const read = readInventory(raw);
     if (!read.ok) return done("projects.read", read);
     const bound = read.rows.map(row => bindWorkspaceRow(row, ctx)).filter(b => b.ok).map(b => b.binding);
-    if (!bound.length) return done("projects.read", { ok: true, hubs: {} });
+    if (!bound.length) return done("projects.read", { ok: true, hubs: [] });
     let result;
     try { result = await ports.spawnCli({ executable: ctx.settings.ahubPath ?? "ahub", argv: ["projects", "--json"], cwd: bound[0].root, hostId: bound[0].hostId, ...PROJECTS_LIMITS }); }
     catch (error) { return done("projects.read", refuse(error && typeof error === "object" && error.code === "ENOENT" ? "cli_missing" : "cli_failed")); }

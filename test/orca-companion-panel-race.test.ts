@@ -278,11 +278,19 @@ test("U2: the status state is a badge, and the header shows the manifest version
 // #5 U3: hub badges from projects.read, the setup notice, and the help links.
 const hubsOf = (f: ReturnType<typeof fixture>) => f.get("rows").children.map(li => li.firstTitle.children.slice(2).map((c: Element) => [c.textContent, c.className]));
 const projectsRequest = (f: ReturnType<typeof fixture>) => f.requests.find(r => r.name === "projects.read")!;
+const hub = (id: string, state: string, change: Record<string, unknown> = {}) => ({ id, hostId: "local", root: `/fixture/${id}`, kind: "worktree", state, ...change });
+
+test("U3: a badge goes only on a row whose drawn binding is the one the worker matched", async () => {
+  const f = fixture(); await f.initial();
+  projectsRequest(f).reply.resolve({ ok: true, hubs: [hub("a", "running", { root: "/fixture/replaced" }), hub("b", "running", { hostId: "other" }), hub("a", "stopped", { kind: "folder" })] });
+  await Promise.resolve(); await Promise.resolve();
+  expect(hubsOf(f)).toEqual([[], []]); // same ids, but a different root, host or kind: the rows drawn are not those bindings
+});
 
 test("U3: after a list with openable rows the panel asks projects.read once and badges the matching rows", async () => {
   const f = fixture(); await f.initial();
   const asked = f.requests.filter(r => r.name === "projects.read"); expect(asked).toHaveLength(1); expect(asked[0]!.input).toBeUndefined();
-  asked[0]!.reply.resolve({ ok: true, hubs: { a: "running", b: "unknown" } }); await Promise.resolve(); await Promise.resolve();
+  asked[0]!.reply.resolve({ ok: true, hubs: [hub("a", "running"), hub("b", "unknown")] }); await Promise.resolve(); await Promise.resolve();
   expect(hubsOf(f)).toEqual([[["hub running", "badge good"]], [["hub", "badge"]]]);
   f.get("filter").input("running"); expect(f.get("rows").children.map(li => li.hidden)).toEqual([false, true]);
   expect(f.get("setup").hidden).toBe(true);
@@ -290,12 +298,12 @@ test("U3: after a list with openable rows the panel asks projects.read once and 
 
 test("U3: a projects reply for an older list is dropped; a selection made meanwhile keeps its badges and stays selected", async () => {
   const f = fixture(); await f.initial(); const first = projectsRequest(f);
-  await f.choose(1); first.reply.resolve({ ok: true, hubs: { b: "stopped" } }); await Promise.resolve(); await Promise.resolve();
+  await f.choose(1); first.reply.resolve({ ok: true, hubs: [hub("b", "stopped")] }); await Promise.resolve(); await Promise.resolve();
   expect(hubsOf(f)).toEqual([[], [["hub stopped", "badge"]]]); expect(f.state().selected?.id).toBe("b");
   const again = f.get("refresh").click(); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await again;
   const late = f.requests.filter(r => r.name === "projects.read");
   expect(late).toHaveLength(2);
-  first.reply.resolve({ ok: true, hubs: { a: "running" } }); await Promise.resolve();
+  first.reply.resolve({ ok: true, hubs: [hub("a", "running")] }); await Promise.resolve();
   expect(hubsOf(f)).toEqual([[], []]); // the new list's rows got nothing from the old reply
 });
 

@@ -109,8 +109,9 @@ The plugin asks for four capabilities, and nothing else:
 - **Status is a closed projection.** Only counts, ids and fixed state words are copied out of `ahub status --json`;
   no task title, peer activity line, notice or path is read.
 - **Project badges read two fields.** When the list shows a workspace this Mac can open, the worker runs
-  `ahub projects --json` once and reads only each project's folder and hub state; only a workspace id to
-  state map reaches the panel. A list with nothing openable here runs nothing.
+  `ahub projects --json` once and reads only each project's folder and hub state; only the matched
+  workspaces, as Orca listed them, and their states reach the panel, which badges a row only if it is still
+  that same workspace. A list with nothing openable here runs nothing.
 - **Selection is exact.** A workspace is chosen by Orca's workspace id, never by name or branch. Before every
   action the worker re-reads the list and requires the same id, host, kind and real folder; otherwise it
   refuses and runs nothing.
