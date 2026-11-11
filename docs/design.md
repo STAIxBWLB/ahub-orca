@@ -68,19 +68,23 @@ plugin's settings, list the host ids that are this Mac (`localHostIds`), or turn
 host id as this Mac" if all your workspaces are local. Remote workspaces are never run here: the
 panel shows the command to run on that host.
 
-## Nothing is kept
+## Only the selection is kept
 
 No CLI output, one-time link, task text or credential is written to plugin storage, a setting, a
 secret or the log. The worker's log lines are a handler name and a closed code (for example
-`entry.open: missing`). The selection lives in the panel's memory only. A one-time link is held in
-memory until it is used or 55 seconds pass (ahub's own expires after 60), then dropped. The worker
-requests no storage or secrets capability.
+`entry.open: missing`). The plugin's own storage (`storage:own`, #5 U4) holds one value, the
+selected workspace's `{id, hostId, root, kind}`, written by the worker only after it verifies them
+against a fresh inventory and dropped when they no longer verify. A one-time link is held in memory
+until it is used or 55 seconds pass (ahub's own expires after 60), then dropped. The worker requests
+no secrets capability.
 
 ## Capabilities asked for
 
 `workspace:read` (the inventory), `workspace:write` (show the workspace), `terminal:send` (create the
 console terminal; Orca requires this capability for `terminal.create`), `settings:own` (the three
-settings). Nothing else: no `agent:*`, no `terminal:read`, no hooks, events or commands. A trusted
+settings), `storage:own` (the remembered selection). Nothing else: no `agent:*`, no `terminal:read`, no
+hooks. Three palette commands act on the remembered selection after verifying it; the panel listens to
+Orca's workspace events only to redraw Orca's list. A trusted
 worker is full-access code that Orca runs only after you approve it, and Orca does not confine its
 filesystem or child processes; the fixtures model the companion's contract, not a sandbox.
 

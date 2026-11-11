@@ -18,7 +18,8 @@ class Element {
   [key: string]: any;
   attributes = new Map<string, string>();
   listeners = new Map<string, (event?: any) => unknown>();
-  append(...nodes: Element[]) { this.children.push(...nodes); }
+  parent: Element | null = null;
+  append(...nodes: Element[]) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
   replaceChildren(...nodes: Element[]) { this.children = nodes; }
   setAttribute(key: string, value: string) { this.attributes.set(key, value); }
   getAttribute(key: string) { return this.attributes.get(key) ?? null; }
@@ -26,7 +27,7 @@ class Element {
   click() { return Promise.resolve(this.listeners.get("click")?.()); }
   focus() { this.focused = true; }
   select() {}
-  remove() { this.removed = true; }
+  remove() { this.removed = true; if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
   key(key: string, target: Element) { let prevented = false; this.listeners.get("keydown")?.({ key, target, preventDefault: () => { prevented = true; } }); return prevented; }
   input(value: string) { this.value = value; this.listeners.get("input")?.(); }
 }
@@ -47,13 +48,14 @@ function fixture() {
   const timers = new Map<number, () => void>(); let nextTimer = 0;
   const documentEvents = new Map<string, () => void>(), windowEvents = new Map<string, () => void>();
   let now = 100000;
+  const events = new Map<string, (payload?: unknown) => void>();
   const copies: string[] = []; let copyWorks = true; const selections: Element[] = []; const body = new Element();
   const context = createContext({
     document: { hidden: false, body, getElementById: (id: string) => elements.get(id), createElement: () => new Element(), addEventListener: (name: string, handler: () => void) => documentEvents.set(name, handler),
       execCommand: (command: string) => { if (command !== "copy" || !copyWorks) return false; copies.push(body.children.filter(child => !child.removed).at(-1)?.value ?? body.children.at(-1)!.value); return true; } },
     window: { addEventListener: (name: string, handler: () => void) => windowEvents.set(name, handler), getSelection: () => ({ selectAllChildren: (node: Element) => selections.push(node) }) },
     Date: { now: () => now },
-    orca: { host: { has: (method: string) => method === "shell.openExternal" },
+    orca: { host: { has: (method: string) => method === "shell.openExternal" }, on: (name: string, handler: (payload?: unknown) => void) => { events.set(name, handler); },
       plugin: { request(name: string, input: unknown) { const reply = deferred(); requests.push({ name, input, reply }); return reply.promise; } },
       shell: { openExternal(url: string) { const reply = deferred(); external.push({ url, reply }); return reply.promise; } } },
     setTimeout(callback: () => void) { const id = ++nextTimer; timers.set(id, callback); return id; },
@@ -68,7 +70,7 @@ function fixture() {
   const choose = (index: number) => get("rows").children[index]!.click();
   const state = () => runInContext("({selected, pendingLink, generation, reading})", context) as { selected: { id: string } | null; pendingLink: string | null; generation: number; reading: unknown };
   const initial = async () => { requests[0]!.reply.resolve({ ok: true, rows: workspaces }); await context.initialRefresh; };
-  return { requests, external, timers, get, choose, state, initial, copies, selections, breakCopy: () => { copyWorks = false; }, listWith: async (rows: unknown[]) => { requests[0]!.reply.resolve({ ok: true, rows }); await context.initialRefresh; }, setNow: (value: number) => { now = value; }, focus: () => windowEvents.get("focus")?.(), visible: () => documentEvents.get("visibilitychange")?.() };
+  return { requests, external, timers, get, choose, state, initial, copies, selections, breakCopy: () => { copyWorks = false; }, listWith: async (rows: unknown[]) => { requests[0]!.reply.resolve({ ok: true, rows }); await context.initialRefresh; }, setNow: (value: number) => { now = value; }, emit: (name: string, payload?: unknown) => events.get(name)!(payload), events, focus: () => windowEvents.get("focus")?.(), visible: () => documentEvents.get("visibilitychange")?.() };
 }
 const linkReply = { ok: true, status: "link", url: "http://127.0.0.1:43111/auth?ticket=fixture-only" };
 function noLink(f: ReturnType<typeof fixture>) {
@@ -207,7 +209,7 @@ test("U2: arrow keys move focus between rows and Enter selects exactly as a clic
   expect(f.state().selected).toBeNull();
   rows.key("Enter", b);
   expect(f.state().selected?.id).toBe("b"); expect(b.attributes.get("aria-selected")).toBe("true"); expect(a.attributes.get("aria-selected")).toBe("false");
-  expect(f.get("console").disabled).toBe(false); expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]); // selecting asks the worker nothing
+  expect(f.get("console").disabled).toBe(false); expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read", "selection.recall", "selection.remember"]); // selecting asks the worker only to remember it
   rows.key(" ", a); expect(f.state().selected?.id).toBe("a");
   expect(rows.key("x", a)).toBe(false);
 });
@@ -248,7 +250,7 @@ test("U2: rows that cannot be opened fold away with their reason and a copy of t
   // a failed copy keeps the command visible and selects it for Cmd+C
   f.breakCopy(); await copy.click();
   expect(f.copies).toHaveLength(1); expect(f.selections).toEqual([command]); expect(command.textContent).toBe("'ahub' 'console'"); expect(copy.textContent).toBe("Press Cmd+C to copy");
-  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]); // copying asks the worker nothing and runs nothing
+  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read", "selection.recall"]); // copying asks the worker nothing and runs nothing
   const none = fixture(); await none.listWith([remoteRow]);
   expect(none.get("status").textContent).toContain("No workspace can be opened on this Mac");
 });
@@ -343,8 +345,66 @@ test("U3: help links open fixed repository pages on a click, and the footer show
   const f = fixture(); await f.initial();
   void f.get("help").click(); void f.get("troubleshoot").click(); void f.get("issues").click(); // the open replies stay pending: a click asks the worker nothing
   expect(f.external.map(e => e.url)).toEqual(["https://github.com/STAIxBWLB/ahub-orca#readme", "https://github.com/STAIxBWLB/ahub-orca#troubleshooting", "https://github.com/STAIxBWLB/ahub-orca/issues"]);
-  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]);
+  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read", "selection.recall"]);
   const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8");
   const version = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8")).version;
   expect(/<span id="footver">([^<]+)<\/span>/.exec(html)?.[1]).toBe(version);
+});
+
+// #5 U4: the remembered selection, Orca's workspace events and the focused-row hint.
+const named = (f: ReturnType<typeof fixture>, name: string) => f.requests.filter(r => r.name === name);
+const titleWords = (li: any) => li.firstTitle.children.map((c: Element) => c.textContent);
+
+test("U4: choosing a row asks the worker to remember exactly its four binding fields; a failed remember changes nothing", async () => {
+  const f = fixture(); await f.initial(); await f.choose(1);
+  const [remember] = named(f, "selection.remember");
+  expect(remember!.input).toEqual({ snapshot: { id: "b", hostId: "local", root: "/fixture/b", kind: "worktree" } }); expect(Object.isFrozen(remember!.input.snapshot)).toBe(true);
+  remember!.reply.reject(Error("no storage")); await Promise.resolve();
+  expect(f.state().selected?.id).toBe("b"); expect(f.get("console").disabled).toBe(false); expect(f.get("status").className).toBe("");
+});
+
+test("U4: the recalled workspace is selected only when its exact binding is drawn and nothing happened since", async () => {
+  const f = fixture(); await f.initial();
+  named(f, "selection.recall")[0]!.reply.resolve({ ok: true, selection: { id: "b", hostId: "local", root: "/fixture/b", kind: "worktree" } }); await Promise.resolve(); await Promise.resolve();
+  expect(f.state().selected?.id).toBe("b"); expect(f.get("status").textContent).toContain("you chose last time");
+  expect(named(f, "selection.remember")).toEqual([]); // recalled, not written again
+  const g = fixture(); await g.initial(); await g.choose(0); // the person chose first: a late recall is ignored
+  named(g, "selection.recall")[0]!.reply.resolve({ ok: true, selection: { id: "b", hostId: "local", root: "/fixture/b", kind: "worktree" } }); await Promise.resolve(); await Promise.resolve();
+  expect(g.state().selected?.id).toBe("a");
+  const h = fixture(); await h.initial(); // same id, another root: not this row
+  named(h, "selection.recall")[0]!.reply.resolve({ ok: true, selection: { id: "b", hostId: "local", root: "/elsewhere", kind: "worktree" } }); await Promise.resolve(); await Promise.resolve();
+  expect(h.state().selected).toBeNull();
+  const d = fixture(); await d.initial();
+  named(d, "selection.recall")[0]!.reply.resolve({ ok: true, selection: null, dropped: "That workspace is no longer in Orca's list. Select again." }); await Promise.resolve(); await Promise.resolve();
+  expect(d.state().selected).toBeNull(); expect(d.get("status").textContent).toContain("was forgotten");
+});
+
+test("U4: Orca's workspace events redraw the list, keep a selection still drawn with the same binding, and never run the CLI", async () => {
+  const f = fixture(); await f.initial();
+  named(f, "projects.read")[0]!.reply.resolve({ ok: true, hubs: [{ id: "a", hostId: "local", root: "/fixture/a", kind: "worktree", state: "running" }] }); await Promise.resolve(); await Promise.resolve();
+  await f.choose(1); const before = f.requests.length;
+  f.emit("workspace.created", { workspace: { id: "c" } }); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await Bun.sleep(0);
+  expect(f.requests.slice(before).map(r => r.name)).toEqual(["workspaces.list"]); // no projects.read, no recall, no remember
+  expect(f.state().selected?.id).toBe("b"); expect(f.get("status").textContent).toBe("Orca's workspaces changed. Your selection is still there.");
+  expect(titleWords(f.get("rows").children[0])).toContain("hub running"); // the badge comes back from the last reading
+  f.emit("workspace.removed", { workspaceId: "b" }); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces.slice(0, 1) }); await Bun.sleep(0);
+  expect(f.state().selected).toBeNull(); expect(f.get("status").textContent).toBe("That workspace is no longer in Orca's list. Select again."); expect(f.get("console").disabled).toBe(true);
+  expect(f.requests.slice(before).map(r => r.name)).toEqual(["workspaces.list", "workspaces.list"]);
+});
+
+test("U4: the focused-row hint marks only a single exact match, moves the Tab stop only while nothing is selected, and never selects or focuses", async () => {
+  const f = fixture(); await f.initial();
+  const [a, b] = f.get("rows").children as any[];
+  f.emit("workspace.changed", { context: { displayName: "b", branch: "main", terminals: [] } });
+  expect(titleWords(b)).toContain("focused in Orca?"); expect(b.tabIndex).toBe(0); expect(a.tabIndex).toBe(-1);
+  expect(f.state().selected).toBeNull(); expect(a.focused || b.focused).toBe(false);
+  f.emit("workspace.changed", { context: { displayName: "b", branch: "other", terminals: [] } }); // zero matches
+  expect(titleWords(b)).not.toContain("focused in Orca?"); expect(a.tabIndex).toBe(0);
+  f.emit("workspace.changed", { context: null });
+  expect([a, b].some(li => titleWords(li).includes("focused in Orca?"))).toBe(false);
+  const twins = fixture(); await twins.listWith(["x", "y"].map(id => ({ ...workspaces[0], id, root: `/fixture/${id}` }))); // several matches
+  twins.emit("workspace.changed", { context: { displayName: "a", branch: "main", terminals: [] } });
+  expect((twins.get("rows").children as any[]).some(li => titleWords(li).includes("focused in Orca?"))).toBe(false);
+  await f.choose(0); f.emit("workspace.changed", { context: { displayName: "b", branch: "main", terminals: [] } });
+  expect(titleWords(b)).toContain("focused in Orca?"); expect(a.tabIndex).toBe(0); expect(b.tabIndex).toBe(-1); expect(f.state().selected?.id).toBe("a");
 });

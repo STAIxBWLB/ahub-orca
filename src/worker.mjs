@@ -1,10 +1,12 @@
 // agent-hub companion for Orca: the trusted worker (#1198 O1). `createCompanion` holds every decision and takes its ports as arguments, so the tests run it against the O0 fixtures; the
 // default export is the thin `activate(orca)` that Orca calls, wired to the real host, the real filesystem and the real child process. See README.md for what is and is not proven.
 import { spawn } from "node:child_process";
-import { classifyStatusRun, projectHubs, projectStatus } from "./status.mjs";
+import { STATUS_SENTENCES, classifyStatusRun, projectHubs, projectStatus } from "./status.mjs";
 import { REMOTE_COMMAND, REFUSALS, CLI_LIMITS, ENTRY_KINDS, bindWorkspace, canonicalizeHere, entryFor, parseSettings, readInventory, readSnapshot, refuse, runCli, terminalCommand, verifyBinding } from "./companion.mjs";
 
-const HANDLERS = Object.freeze(["workspaces.list", "workspace.bind", "entry.open", "status.read", "projects.read"]);
+const HANDLERS = Object.freeze(["workspaces.list", "workspace.bind", "entry.open", "status.read", "projects.read", "selection.remember", "selection.recall"]);
+/** The palette commands (orca-plugin.json `contributes.commands`), each acting on the remembered selection. */
+export const COMMANDS = Object.freeze({ "open-console": "console", "open-dashboard": "dashboard", "show-status": "status" });
 // ponytail: `ahub projects --json` prints every registered project with a nested status (about 16 KB each when running), so it gets its own cap; raise it, or ask ahub for a lean form, if 4 MB is ever reached.
 const PROJECTS_LIMITS = Object.freeze({ timeoutMs: 15_000, maxOutputBytes: 4 * 1024 * 1024 });
 /** What `ahub` prints, as its first words, when no hub runs for the project (src/hub/control-client.ts). Tested as a prefix and never returned. */
@@ -154,7 +156,75 @@ export function createCompanion(ports) {
     return done("projects.read", projectHubs(list, bound, ctx.canonicalize));
   }
 
-  return { list, bind, open, status: readStatus, projects: readProjects, handlers: { "workspaces.list": list, "workspace.bind": bind, "entry.open": open, "status.read": readStatus, "projects.read": readProjects } };
+  // The remembered selection (#5 D1): one key in the plugin's own store, holding only the four binding fields, written only after it verifies against a fresh inventory, and re-verified
+  // before every use. A stored value that no longer names the same workspace is dropped. It is the only thing this plugin stores.
+  const SELECTION_KEY = "selection";
+  const STALE = new Set(["missing", "changed", "remote", "host_unknown", "unreal_root", "unsupported_platform", "duplicate", "bad_request"]);
+  const store = {
+    async get() { if (!ports.host.has("storage.get")) return undefined; try { const got = await ports.host.call("storage.get", { key: SELECTION_KEY }); return got?.value ?? null; } catch { return undefined; } },
+    async set(value) { if (!ports.host.has("storage.set")) return false; try { await ports.host.call("storage.set", { key: SELECTION_KEY, value }); return true; } catch { return false; } },
+    async drop() { if (!ports.host.has("storage.delete")) return; try { await ports.host.call("storage.delete", { key: SELECTION_KEY }); } catch { /* the next recall verifies it again */ } },
+  };
+
+  async function remember(input) {
+    const value = exact(input, ["snapshot"]);
+    if (!value || !readSnapshot(value.snapshot)) return done("selection.remember", refuse("bad_request"));
+    const ctx = await context();
+    const raw = await inventory();
+    if (raw === undefined) return done("selection.remember", refuse("inventory_unavailable"));
+    const verified = verifyBinding(value.snapshot, raw, ctx);
+    if (!verified.ok) return done("selection.remember", verified);
+    const { id, hostId, root, kind } = verified.binding;
+    return done("selection.remember", await store.set({ id, hostId, root, kind }) ? { ok: true } : refuse("not_offered"));
+  }
+
+  /** The remembered selection, verified now: `{ ok: true, selection }` (null when none), or the refusal of one that no longer verifies, which is dropped when it names a different workspace. */
+  async function recalled() {
+    const stored = await store.get();
+    if (stored === undefined) return refuse("not_offered");
+    if (stored === null) return { ok: true, selection: null };
+    const snapshot = readSnapshot(stored);
+    if (!snapshot) { await store.drop(); return { ok: true, selection: null }; }
+    const raw = await inventory();
+    if (raw === undefined) return refuse("inventory_unavailable");
+    const verified = verifyBinding(snapshot, raw, await context());
+    if (!verified.ok) { if (STALE.has(verified.refusal)) await store.drop(); return verified; }
+    return { ok: true, selection: snapshot };
+  }
+  async function recall(input) {
+    if (input !== undefined) return done("selection.recall", refuse("bad_request"));
+    const result = await recalled();
+    return done("selection.recall", result.ok || !STALE.has(result.refusal) ? result : { ok: true, selection: null, dropped: result.guidance });
+  }
+
+  /**
+   * A palette command: the same open or status read as the panel's buttons, on the remembered selection, answered as one sentence for Orca to show. A one-time dashboard link holds a
+   * ticket and needs the panel's click to open, so it is never returned here.
+   */
+  async function runCommand(id) {
+    const kind = COMMANDS[id];
+    if (!kind) return "Unknown agent-hub command.";
+    const recall_ = await recalled();
+    if (!recall_.ok) return sentence(withCommand(recall_));
+    if (!recall_.selection) return "Select a workspace in the agent-hub panel first. Nothing was run.";
+    if (kind === "status") {
+      const reading = await readStatus({ snapshot: recall_.selection });
+      if (!reading.ok) return sentence(reading);
+      if (reading.state === "offline" || reading.state === "unavailable_version") return STATUS_SENTENCES[reading.state];
+      const tasks = reading.tasks ? Object.entries(reading.tasks).map(([k, n]) => n + " " + k).join(", ") || "none" : "unknown";
+      const peers = reading.peers ? reading.peers.map(p => p.id + " " + p.state + (p.queued ? " (" + p.queued + " queued)" : "")).join(", ") || "none" : "unknown";
+      return "agent-hub " + (reading.version ?? "(version not reported)") + ": " + reading.state + ". Tasks: " + tasks + ". Peers: " + peers + ".";
+    }
+    const result = await open({ kind, snapshot: recall_.selection });
+    if (!result.ok) return sentence(result);
+    if (result.status === "terminal_created") return "A terminal was created in the workspace and is running the command. Select its tab to see it.";
+    if (result.status === "link") return "ahub printed a one-time link, which a command cannot open. Open the dashboard from the agent-hub panel.";
+    return "The dashboard was opened by ahub in your browser.";
+  }
+  const sentence = refusal => refusal.guidance + (refusal.command ? " Command: " + refusal.command : "");
+
+  return { list, bind, open, status: readStatus, projects: readProjects, remember, recall, runCommand,
+    handlers: { "workspaces.list": list, "workspace.bind": bind, "entry.open": open, "status.read": readStatus, "projects.read": readProjects, "selection.remember": remember, "selection.recall": recall } };
 }
 
 /**
@@ -199,6 +269,7 @@ export default async function activate(orca) {
     log: line => orca.log(line),
   });
   const disposables = HANDLERS.map(name => orca.panels.handle(name, input => companion.handlers[name](input)));
+  for (const id of Object.keys(COMMANDS)) disposables.push(orca.commands.register(id, () => companion.runCommand(id)));
   void REFUSALS; void CLI_LIMITS;
   return { dispose() { for (const d of disposables) d?.dispose?.(); } };
 }

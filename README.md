@@ -48,7 +48,7 @@ asks for, and you approve it before it runs.
 1. Open **Settings → Plugins**.
 2. Choose **Add plugin → From a Git URL...** and enter `https://github.com/STAIxBWLB/ahub-orca#v0.1.0`.
    Keep `#v0.1.0` at the end so the release tag is installed.
-3. Review and approve the **trusted worker** and the four capabilities listed under [Access and privacy](#access-and-privacy).
+3. Review and approve the **trusted worker** and the five capabilities listed under [Access and privacy](#access-and-privacy).
 
 Or from a terminal: `orca plugin install STAIxBWLB/ahub-orca@v0.1.0`. It stops at the approval
 step and prints the fingerprint to approve.
@@ -82,6 +82,17 @@ its reason. When the fix is a command to run elsewhere, **Copy command** copies 
 setting to change. **Help**, **Troubleshooting** and **Report an issue** at the bottom open this
 repository's pages.
 
+The panel remembers the workspace you chose last and selects it again when you reopen the panel, if Orca
+still lists it with the same id, host, kind and folder. Orca's own workspace events (one created or
+removed) redraw the list without reading `ahub`; your selection stays if that workspace is still there.
+When Orca reports a focused workspace and exactly one row has its name and branch, that row is marked
+**focused in Orca?** and is where Tab lands while nothing is selected. It is a hint: it never selects.
+
+From the command palette, **agent-hub: Open console (remembered workspace)**, **Open dashboard** and
+**Show status** act on the remembered workspace (Open console also on **Cmd+Alt+Shift+H**). Each checks the
+workspace again first and runs nothing if it changed; a dashboard that needs a one-time link must be opened
+from the panel, since a command cannot open a link.
+
 ## Settings
 
 Under **Settings → Plugins → agent-hub**:
@@ -94,7 +105,7 @@ Under **Settings → Plugins → agent-hub**:
 
 ## Access and privacy
 
-The plugin asks for four capabilities, and nothing else:
+The plugin asks for five capabilities, and nothing else:
 
 | Capability | Used for |
 | --- | --- |
@@ -102,10 +113,12 @@ The plugin asks for four capabilities, and nothing else:
 | `workspace:write` | showing the selected workspace in Orca |
 | `terminal:send` | creating the console terminal (Orca requires it for `terminal.create`) |
 | `settings:own` | reading the three settings above |
+| `storage:own` | remembering the selected workspace for the panel and the palette commands |
 
-- **Nothing is kept.** No CLI output, one-time link, task text or credential is written to plugin storage,
-  a setting or the log. The selection lives in the panel's memory only. A one-time dashboard link is held
-  in memory for at most 55 seconds, then dropped.
+- **Only the selection is kept.** The plugin's own storage holds one value: the selected workspace's id,
+  host, kind and real folder, written only after the worker verifies them and dropped once they no longer
+  name the same workspace. No CLI output, one-time link, task text or credential is written to storage, a
+  setting or the log. A one-time dashboard link is held in memory for at most 55 seconds, then dropped.
 - **Status is a closed projection.** Only counts, ids and fixed state words are copied out of `ahub status --json`;
   no task title, peer activity line, notice or path is read.
 - **Project badges read two fields.** When the list shows a workspace this Mac can open, the worker runs
@@ -161,7 +174,8 @@ orca plugin dev unload .                                # remove a development f
 ```
 
 Removing it stops no agent, removes no worktree, edits no hub state and restores no setting,
-because it never changed any.
+because it never changed any. Its own storage holds only the remembered workspace (id, host, kind and
+folder); what Orca does with a removed plugin's storage is Orca's.
 
 ## Known limitations
 
@@ -179,7 +193,10 @@ checked against fixtures only.
 
 - **No terminal focus.** Open console always creates a new terminal. Orca documents no mapping from a plugin
   terminal id to a terminal it can switch to, so the companion never focuses, reads or replaces one.
-- **No background refresh.** Status and the workspace list are read only when you click.
+- **No background refresh.** Status and project badges are read only when you click or refresh; Orca's
+  workspace events redraw only Orca's list.
+- **The focused hint is a guess.** Orca's focus event names a workspace by display name and branch, not by
+  id, so two rows with the same name and branch get no hint.
 
 ## More
 
