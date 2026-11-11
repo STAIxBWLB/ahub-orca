@@ -11,13 +11,23 @@ class Element {
   type = "";
   disabled = false;
   hidden = false;
+  value = "";
+  tabIndex = 0;
+  focused = false;
+  removed = false;
+  [key: string]: any;
   attributes = new Map<string, string>();
-  listeners = new Map<string, () => unknown>();
+  listeners = new Map<string, (event?: any) => unknown>();
   append(...nodes: Element[]) { this.children.push(...nodes); }
   replaceChildren(...nodes: Element[]) { this.children = nodes; }
   setAttribute(key: string, value: string) { this.attributes.set(key, value); }
-  addEventListener(event: string, listener: () => unknown) { this.listeners.set(event, listener); }
+  addEventListener(event: string, listener: (event?: any) => unknown) { this.listeners.set(event, listener); }
   click() { return Promise.resolve(this.listeners.get("click")?.()); }
+  focus() { this.focused = true; }
+  select() {}
+  remove() { this.removed = true; }
+  key(key: string, target: Element) { let prevented = false; this.listeners.get("keydown")?.({ key, target, preventDefault: () => { prevented = true; } }); return prevented; }
+  input(value: string) { this.value = value; this.listeners.get("input")?.(); }
 }
 function deferred() {
   let resolve!: (value: unknown) => void, reject!: (error: Error) => void;
@@ -26,7 +36,8 @@ function deferred() {
 }
 const workspaces = ["a", "b"].map(id => ({ id, name: id, branch: "main", root: `/fixture/${id}`, hostId: "local", kind: "worktree", selectable: true }));
 function fixture() {
-  const elements = new Map(["rows", "status", "link", "refresh", "dashboard", "console", "family", "statusbtn", "statusbox", "statusline", "statuspeers", "statusnote"].map(id => [id, new Element()]));
+  const elements = new Map(["rows", "status", "link", "refresh", "dashboard", "console", "family", "statusbtn", "statusbox", "statusline", "statuspeers", "statusnote",
+    "filter", "offrows", "unavailable", "offcount", "cmdbox", "cmd", "copy", "statebadge"].map(id => [id, new Element()]));
   for (const id of ["dashboard", "console", "family", "statusbtn"]) elements.get(id)!.disabled = true;
   elements.get("link")!.hidden = true;
   elements.get("statusbox")!.hidden = true;
@@ -35,9 +46,11 @@ function fixture() {
   const timers = new Map<number, () => void>(); let nextTimer = 0;
   const documentEvents = new Map<string, () => void>(), windowEvents = new Map<string, () => void>();
   let now = 100000;
+  const copies: string[] = []; let copyWorks = true; const selections: Element[] = []; const body = new Element();
   const context = createContext({
-    document: { hidden: false, getElementById: (id: string) => elements.get(id), createElement: () => new Element(), addEventListener: (name: string, handler: () => void) => documentEvents.set(name, handler) },
-    window: { addEventListener: (name: string, handler: () => void) => windowEvents.set(name, handler) },
+    document: { hidden: false, body, getElementById: (id: string) => elements.get(id), createElement: () => new Element(), addEventListener: (name: string, handler: () => void) => documentEvents.set(name, handler),
+      execCommand: (command: string) => { if (command !== "copy" || !copyWorks) return false; copies.push(body.children.filter(child => !child.removed).at(-1)?.value ?? body.children.at(-1)!.value); return true; } },
+    window: { addEventListener: (name: string, handler: () => void) => windowEvents.set(name, handler), getSelection: () => ({ selectAllChildren: (node: Element) => selections.push(node) }) },
     Date: { now: () => now },
     orca: { host: { has: (method: string) => method === "shell.openExternal" },
       plugin: { request(name: string, input: unknown) { const reply = deferred(); requests.push({ name, input, reply }); return reply.promise; } },
@@ -51,10 +64,10 @@ function fixture() {
   // Expose only the initial call's completion, without changing any panel decision or asynchronous branch.
   runInContext(script.replace(/\nrefresh\(\);\s*$/, "\nglobalThis.initialRefresh = refresh();"), context);
   const get = (id: string) => elements.get(id)!;
-  const choose = (index: number) => get("rows").children[index]!.children.at(-1)!.click();
+  const choose = (index: number) => get("rows").children[index]!.click();
   const state = () => runInContext("({selected, pendingLink, generation, reading})", context) as { selected: { id: string } | null; pendingLink: string | null; generation: number; reading: unknown };
   const initial = async () => { requests[0]!.reply.resolve({ ok: true, rows: workspaces }); await context.initialRefresh; };
-  return { requests, external, timers, get, choose, state, initial, setNow: (value: number) => { now = value; }, focus: () => windowEvents.get("focus")?.(), visible: () => documentEvents.get("visibilitychange")?.() };
+  return { requests, external, timers, get, choose, state, initial, copies, selections, breakCopy: () => { copyWorks = false; }, listWith: async (rows: unknown[]) => { requests[0]!.reply.resolve({ ok: true, rows }); await context.initialRefresh; }, setNow: (value: number) => { now = value; }, focus: () => windowEvents.get("focus")?.(), visible: () => documentEvents.get("visibilitychange")?.() };
 }
 const linkReply = { ok: true, status: "link", url: "http://127.0.0.1:43111/auth?ticket=fixture-only" };
 function noLink(f: ReturnType<typeof fixture>) {
@@ -178,4 +191,69 @@ test("status aging is context driven and refresh clears the old reading immediat
   expect(f.requests).toHaveLength(requests); expect(f.timers.size).toBe(0);
   const refreshing = f.get("refresh").click(); expect(f.state().reading).toBeNull(); expect(f.get("statusbox").hidden).toBe(true);
   f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await refreshing;
+});
+
+// #5 U2: keyboard selection, filter, copy command, the unavailable fold and the version label.
+const many = Array.from({ length: 10 }, (_, i) => ({ id: "w" + i, name: i === 7 ? "billing api" : "w" + i, branch: "main", root: `/fixture/w${i}`, hostId: "local", kind: "worktree", selectable: true }));
+const remoteRow = { id: "r", name: "remote one", branch: null, root: "/srv/r", hostId: "ssh-box", kind: "worktree", selectable: false, refusal: "remote", guidance: "This workspace is on another host.", command: "'ahub' 'console'" };
+
+test("U2: arrow keys move focus between rows and Enter selects exactly as a click does", async () => {
+  const f = fixture(); await f.initial();
+  const rows = f.get("rows"), [a, b] = rows.children as any[];
+  expect(a.tabIndex).toBe(0); expect(b.tabIndex).toBe(-1); expect(a.attributes.get("role")).toBe("option");
+  expect(rows.key("ArrowDown", a)).toBe(true); expect(b.focused).toBe(true); expect(b.tabIndex).toBe(0); expect(a.tabIndex).toBe(-1);
+  expect(rows.key("ArrowDown", b)).toBe(true); expect(b.tabIndex).toBe(0); // stays on the last row
+  expect(f.state().selected).toBeNull();
+  rows.key("Enter", b);
+  expect(f.state().selected?.id).toBe("b"); expect(b.attributes.get("aria-selected")).toBe("true"); expect(a.attributes.get("aria-selected")).toBe("false");
+  expect(f.get("console").disabled).toBe(false); expect(f.requests).toHaveLength(1); // selecting asks the worker nothing
+  rows.key(" ", a); expect(f.state().selected?.id).toBe("a");
+  expect(rows.key("x", a)).toBe(false);
+});
+
+test("U2: the filter appears only for more than 8 rows and hides rows that do not match every word", async () => {
+  const small = fixture(); await small.initial(); expect(small.get("filter").hidden).toBe(true);
+  const f = fixture(); await f.listWith(many);
+  const filter = f.get("filter"), rows = f.get("rows").children;
+  expect(filter.hidden).toBe(false);
+  filter.input("BILLING api"); expect(rows.filter(li => !li.hidden).map(li => li.searchText)).toEqual([expect.stringContaining("billing api")]);
+  filter.input("w3 /fixture"); expect(rows.filter(li => !li.hidden)).toHaveLength(1);
+  filter.input(""); expect(rows.filter(li => !li.hidden)).toHaveLength(10);
+  // a filtered-out row is skipped by the arrow keys
+  filter.input("w1"); const visible = rows.filter(li => !li.hidden); expect(visible).toHaveLength(1);
+  f.get("rows").key("ArrowDown", visible[0]!); expect(visible[0]!.focused).toBe(true);
+});
+
+test("U2: rows that cannot be opened fold away with their reason and a copy of the worker's command", async () => {
+  const f = fixture(); await f.listWith([workspaces[0], remoteRow]);
+  expect(f.get("rows").children).toHaveLength(1); expect(f.get("unavailable").hidden).toBe(false);
+  expect(f.get("offcount").textContent).toBe("1 not available on this Mac");
+  const off = f.get("offrows").children[0]!, copy = off.children.at(-1)!;
+  expect(off.children.map(c => c.textContent)).toContain("This workspace is on another host.");
+  await copy.click(); expect(f.copies).toEqual(["'ahub' 'console'"]); expect(copy.textContent).toBe("Copied");
+  expect(f.requests).toHaveLength(1); // copying asks the worker nothing and runs nothing
+  const none = fixture(); await none.listWith([remoteRow]);
+  expect(none.get("status").textContent).toContain("No workspace can be opened on this Mac");
+});
+
+test("U2: a refusal that carries a command shows it with Copy command; a failed copy leaves it selected", async () => {
+  const f = fixture(); await f.initial(); await f.choose(0);
+  const opening = f.get("console").click(); f.requests.at(-1)!.reply.resolve({ ok: false, refusal: "remote", guidance: "This workspace is on another host.", command: "'ahub' 'console'" }); await opening;
+  expect(f.get("status").className).toBe("bad"); expect(f.get("cmdbox").hidden).toBe(false); expect(f.get("cmd").textContent).toBe("'ahub' 'console'");
+  await f.get("copy").click(); expect(f.copies).toEqual(["'ahub' 'console'"]); expect(f.get("copy").textContent).toBe("Copied");
+  f.breakCopy(); await f.get("copy").click();
+  expect(f.copies).toHaveLength(1); expect(f.selections).toEqual([f.get("cmd")]); expect(f.get("copy").textContent).toBe("Press Cmd+C to copy");
+  // the next message drops the command
+  await f.choose(1); expect(f.get("cmdbox").hidden).toBe(true); expect(f.get("cmd").textContent).toBe("");
+});
+
+test("U2: the status state is a badge, and the header shows the manifest version", async () => {
+  const f = fixture(); await f.initial(); await f.choose(0);
+  const reading = f.get("statusbtn").click(); f.requests.at(-1)!.reply.resolve(statusReply(3)); await reading;
+  expect(f.get("statebadge").textContent).toBe("running"); expect(f.get("statebadge").className).toBe("badge good");
+  expect(f.get("statuspeers").children[0]!.children.map(c => c.textContent)).toEqual(["codex ", "idle", "0 queued"]);
+  f.setNow(161001); f.focus(); expect(f.get("statebadge").textContent).toBe("stale"); expect(f.get("statebadge").className).toBe("badge");
+  const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8");
+  const version = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8")).version;
+  expect(/<span class="ver">([^<]+)<\/span>/.exec(html)?.[1]).toBe(version);
 });
