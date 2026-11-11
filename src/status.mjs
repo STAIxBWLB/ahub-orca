@@ -69,6 +69,29 @@ export function projectStatus(raw, fetchedAt, now) {
   return { ok: true, state, version, tasks, peers, missing, ageMs: age };
 }
 
+/** The hub states the contract's `projects[].state` names; any other value is shown as `unknown`, never copied. */
+export const HUB_STATES = Object.freeze(["running", "stopped"]);
+const MAX_PROJECTS = 1024;
+
+/**
+ * Which of the bound workspaces are agent-hub projects, and their hub state, from the parsed `ahub projects --json` list. Only `root` and `state` of each entry are read; every other field
+ * (ids, ports, pids, a nested status with free text) is never looked at. Roots are compared after canonicalizing ahub's side, because `bindings` are already bound to real roots here, and
+ * every binding on a matching root gets the state (two workspaces can share a folder). An entry whose folder is gone matches nothing. The answer is one entry per matched binding, carrying
+ * that binding's four fields, so the panel badges a row only when the row it drew is the same binding; nothing of ahub's output but the state leaves.
+ */
+export function projectHubs(list, bindings, canonicalize) {
+  if (!Array.isArray(list) || list.length > MAX_PROJECTS) return refuse("unrecognized_output");
+  const states = new Map();
+  for (const project of list) {
+    if (!isObject(project) || typeof project.root !== "string" || !project.root.startsWith("/") || project.root.length > 4096) return refuse("unrecognized_output");
+    let root;
+    try { root = canonicalize(project.root); } catch { continue; }
+    states.set(root, HUB_STATES.includes(project.state) ? project.state : "unknown");
+  }
+  const hubs = bindings.filter(binding => states.has(binding.root)).map(({ id, hostId, root, kind }) => ({ id, hostId, root, kind, state: states.get(root) }));
+  return { ok: true, hubs };
+}
+
 /** Re-judge an existing reading against a later clock, so the panel can call an old one stale without asking the hub again. */
 export function ageReading(reading, now) {
   if (!reading || reading.ok !== true || !Number.isFinite(reading.fetchedAt)) return { ...reading, state: "unknown" };

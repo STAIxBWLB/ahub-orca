@@ -67,12 +67,20 @@ It is not listed in a plugin catalog yet.
 ## Use
 
 1. Open **agent-hub** from the layers icon in Orca's right sidebar.
-2. Select a workspace. The row shows its name, branch, real folder and host.
+2. Select a workspace: click its row, or move with the arrow keys and press Enter. The row shows its name,
+   branch, real folder and host, and a **hub running** or **hub stopped** badge when the folder is an
+   agent-hub project. With more than 8 workspaces, type in the filter box to narrow the list.
 3. Choose **Open console**, **Open dashboard**, **Open family console** or **Show status**.
 
 Open console creates a new terminal in the background; select its tab to see it. "Refresh workspaces"
 reads Orca's list again. Status is read only when you click; an old reading is marked stale and is not
 refreshed for you.
+
+Workspaces that cannot be opened on this Mac are folded under "N not available on this Mac", each with
+its reason. When the fix is a command to run elsewhere, **Copy command** copies it. A setup problem (no
+`ahub` found, or host settings that leave nothing openable) is shown once above the list with the
+setting to change. **Help**, **Troubleshooting** and **Report an issue** at the bottom open this
+repository's pages.
 
 ## Settings
 
@@ -100,6 +108,10 @@ The plugin asks for four capabilities, and nothing else:
   in memory for at most 55 seconds, then dropped.
 - **Status is a closed projection.** Only counts, ids and fixed state words are copied out of `ahub status --json`;
   no task title, peer activity line, notice or path is read.
+- **Project badges read two fields.** When the list shows a workspace this Mac can open, the worker runs
+  `ahub projects --json` once and reads only each project's folder and hub state; only the matched
+  workspaces, as Orca listed them, and their states reach the panel, which badges a row only if it is still
+  that same workspace. A list with nothing openable here runs nothing.
 - **Selection is exact.** A workspace is chosen by Orca's workspace id, never by name or branch. Before every
   action the worker re-reads the list and requires the same id, host, kind and real folder; otherwise it
   refuses and runs nothing.

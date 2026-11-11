@@ -30,6 +30,7 @@
   #status { margin-top: 10px; min-height: 2.8em; }
   #status.bad { color: var(--orca-destructive, #c0392b); }
   li.row code { margin-right: 6px; }
+  li.row .badge { margin-left: 6px; }
   #cmdbox { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
   #cmdbox[hidden] { display: none; }
   #statusbox { margin-top: 10px; padding: 8px; border: 1px solid var(--orca-border); border-radius: var(--orca-radius, 6px); background: var(--orca-card); }
@@ -37,6 +38,11 @@
   .badge.good { color: var(--orca-primary-foreground); background: var(--orca-primary); border-color: var(--orca-primary); }
   .badge.bad { color: var(--orca-destructive, #c0392b); background: transparent; border-color: var(--orca-destructive, #c0392b); }
   .offscreen { position: fixed; left: -9999px; top: 0; }
+  #setup { margin: 8px 0; padding: 6px 8px; border: 1px solid var(--orca-destructive, #c0392b); border-radius: var(--orca-radius, 6px); }
+  #setup[hidden] { display: none; }
+  footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--orca-border); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  footer button { padding: 0; border: 0; background: none; color: var(--orca-muted-foreground); text-decoration: underline; }
+  footer .note { flex-basis: 100%; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -50,6 +56,7 @@
   <input id="filter" type="search" placeholder="Filter workspaces" aria-label="Filter workspaces" hidden>
   <button id="refresh" type="button">Refresh workspaces</button>
 </div>
+<p id="setup" role="alert" hidden></p>
 <ul id="rows" role="listbox" aria-label="Workspaces"></ul>
 <details id="unavailable" hidden>
   <summary id="offcount"></summary>
@@ -70,6 +77,12 @@
 </div>
 <div id="status" role="status" aria-live="polite"></div>
 <div id="cmdbox" hidden><code id="cmd"></code><button id="copy" type="button">Copy command</button></div>
+<footer>
+  <button id="help" type="button">Help</button>
+  <button id="troubleshoot" type="button">Troubleshooting</button>
+  <button id="issues" type="button">Report an issue</button>
+  <span class="note">agent-hub companion <span id="footver">0.1.0</span>, ahub CLI contract v1</span>
+</footer>
 <script type="module">
 // Nothing is stored: not in localStorage, not in plugin storage. The selection lives in this page's memory and is checked again by the worker before every effect.
 const $ = id => document.getElementById(id);
@@ -80,6 +93,7 @@ let linkTimer = 0;
 let generation = 0;          // selection, refresh and open responses belong only to their initiating UI state
 const LINK_LIVES_MS = 55_000; // ahub's own link expires after 60 seconds
 const FILTER_FROM = 9;        // the filter box appears only when there are more rows than fit at a glance
+let listGeneration = 0;      // the rows drawn by one refresh; a projects reply belongs only to the list it was asked for
 
 // A command shown with a refusal is the worker's own fixed words (never project text); the panel only shows it and offers to copy it.
 function showCommand(command) { $("cmdbox").hidden = !command; $("cmd").textContent = command ?? ""; $("copy").textContent = "Copy command"; }
@@ -157,10 +171,39 @@ function choose(li, row) {
   setActions(true); dropLink(); dropStatus();
   say("Selected. Choose a screen to open, or show its status.");
 }
+// Setup problems are shown once above the list, in the words of the worker's refusal or of the plugin settings: nothing here is guessed or fixed for the person.
+const SETTINGS = "Settings → Plugins → agent-hub";
+function setup(text) { $("setup").hidden = !text; $("setup").textContent = text ?? ""; }
+function setupFromRows(list) {
+  if (!list.length || list.some(row => row.selectable)) return null;
+  if (list.every(row => row.refusal === "host_unknown")) return "None of these workspaces says which machine it is on. If they are all on this Mac, turn on \"Treat a missing host id as this Mac\" in " + SETTINGS + ", then click Refresh workspaces.";
+  if (list.every(row => row.refusal === "remote" || row.refusal === "host_unknown")) return "Every workspace is on another host. If one of those host ids is this Mac, add it to \"Host ids that mean this Mac\" in " + SETTINGS + ", then click Refresh workspaces.";
+  return null;
+}
+// Which rows are agent-hub projects, and whether their hub runs: asked once after a list is drawn, never on a timer. A missing ahub is the one setup problem it reports; any other failure shows no badge rather than a wrong one.
+async function readProjects(forList) {
+  let result;
+  try { result = await ask("projects.read", undefined); } catch { return; }
+  if (forList !== listGeneration || !result) return;
+  if (!result.ok) { if (result.refusal === "cli_missing") setup(result.guidance); return; }
+  // A badge goes only on a row whose drawn binding is the one the worker matched: same id, host, kind and real root. A workspace that changed in between gets none.
+  for (const li of rows.children) {
+    const hub = result.hubs.find(h => h.id === li.binding.id && h.hostId === li.binding.hostId && h.root === li.binding.root && h.kind === li.binding.kind);
+    if (!hub) continue;
+    const state = hub.state;
+    const tag = document.createElement("span");
+    tag.className = "badge" + (state === "running" ? " good" : "");
+    tag.textContent = state === "unknown" ? "hub" : "hub " + state;
+    li.firstTitle.append(tag);
+    li.searchText += " hub " + state;
+  }
+  applyFilter();
+}
 function rowLines(li, row) {
   const title = document.createElement("div"), name = document.createElement("span"), branch = document.createElement("span");
   name.className = "name"; name.textContent = row.name; branch.className = "note"; branch.textContent = row.branch ? "  [" + row.branch + "]" : "";
   title.append(name, branch);
+  li.firstTitle = title; li.binding = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
   const root = document.createElement("div");
   root.className = "root"; root.textContent = row.root;
   const host = document.createElement("div");
@@ -169,6 +212,7 @@ function rowLines(li, row) {
   li.searchText = [row.name, row.branch ?? "", row.root, row.hostId ?? ""].join(" ").toLowerCase();
 }
 function renderRows(list) {
+  listGeneration++; setup(null);
   rows.replaceChildren(); offrows.replaceChildren();
   selected = null; setActions(false); dropLink(); dropStatus();
   filter.value = ""; filter.hidden = list.length < FILTER_FROM;
@@ -211,14 +255,16 @@ rows.addEventListener("keydown", event => {
     next.tabIndex = 0; next.focus();
   } else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.target.chooseRow(); }
 });
-filter.addEventListener("input", () => {
+// Re-run on every filter change and again when badges arrive, since a badge adds words a query typed earlier may match.
+function applyFilter() {
   const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const li of [...rows.children, ...offrows.children]) li.hidden = !words.every(word => li.searchText.includes(word));
   // Keep exactly one visible row reachable by Tab: the selected one when it is shown, else the first shown.
   const visible = [...rows.children].filter(li => !li.hidden);
   const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible[0];
   for (const li of rows.children) li.tabIndex = li === stop ? 0 : -1;
-});
+}
+filter.addEventListener("input", applyFilter);
 
 async function refresh() {
   const requestGeneration = ++generation;
@@ -229,6 +275,8 @@ async function refresh() {
     if (requestGeneration !== generation) return;
     if (!result.ok) { renderRows([]); say(result.guidance, true, result.command); return; }
     renderRows(result.rows);
+    setup(setupFromRows(result.rows));
+    if (result.rows.some(row => row.selectable)) void readProjects(listGeneration);
     say(result.rows.some(row => row.selectable) ? "Select the workspace to open." : result.rows.length ? "No workspace can be opened on this Mac; the reasons are listed below." : "Orca lists no workspaces.");
   } catch { if (requestGeneration === generation) { renderRows([]); say("The companion did not answer. Disable and re-enable it from Orca's plugin list.", true); } }
 }
@@ -266,6 +314,12 @@ link.addEventListener("click", async () => {
     if (requestGeneration !== generation) return;
     say(opened && opened.opened ? "Opened in your browser." : "Orca did not open the link (it may have asked and been declined). Open the dashboard again.", !(opened && opened.opened));
   } catch { if (requestGeneration === generation) say("Orca could not open the link here. Run `ahub ui` in a terminal.", true); }
+});
+// Help links are fixed pages of this plugin's repository, opened only by a click (the gesture Orca requires). A client without external navigation is told the address instead.
+const PAGES = { help: "https://github.com/STAIxBWLB/ahub-orca#readme", troubleshoot: "https://github.com/STAIxBWLB/ahub-orca#troubleshooting", issues: "https://github.com/STAIxBWLB/ahub-orca/issues" };
+for (const [id, url] of Object.entries(PAGES)) $(id).addEventListener("click", async () => {
+  if (!(orca.host && orca.host.has && orca.host.has("shell.openExternal") && orca.shell && orca.shell.openExternal)) { say("Open " + url + " in a browser."); return; }
+  try { await orca.shell.openExternal(url); } catch { say("Orca could not open " + url + ". Open it in a browser."); }
 });
 $("statusbtn").addEventListener("click", readStatus);
 window.addEventListener("focus", drawStatus);
