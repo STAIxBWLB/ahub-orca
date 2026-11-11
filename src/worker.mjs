@@ -1,10 +1,12 @@
 // agent-hub companion for Orca: the trusted worker (#1198 O1). `createCompanion` holds every decision and takes its ports as arguments, so the tests run it against the O0 fixtures; the
 // default export is the thin `activate(orca)` that Orca calls, wired to the real host, the real filesystem and the real child process. See README.md for what is and is not proven.
 import { spawn } from "node:child_process";
-import { classifyStatusRun, projectStatus } from "./status.mjs";
+import { classifyStatusRun, projectHubs, projectStatus } from "./status.mjs";
 import { REMOTE_COMMAND, REFUSALS, CLI_LIMITS, ENTRY_KINDS, bindWorkspace, canonicalizeHere, entryFor, parseSettings, readInventory, readSnapshot, refuse, runCli, terminalCommand, verifyBinding } from "./companion.mjs";
 
-const HANDLERS = Object.freeze(["workspaces.list", "workspace.bind", "entry.open", "status.read"]);
+const HANDLERS = Object.freeze(["workspaces.list", "workspace.bind", "entry.open", "status.read", "projects.read"]);
+// ponytail: `ahub projects --json` prints every registered project with a nested status (about 16 KB each when running), so it gets its own cap; raise it, or ask ahub for a lean form, if 4 MB is ever reached.
+const PROJECTS_LIMITS = Object.freeze({ timeoutMs: 15_000, maxOutputBytes: 4 * 1024 * 1024 });
 /** What `ahub` prints, as its first words, when no hub runs for the project (src/hub/control-client.ts). Tested as a prefix and never returned. */
 const NO_HUB_PREFIX = "ahub: no hub running for ";
 
@@ -125,7 +127,34 @@ export function createCompanion(ports) {
   }
   const fixedReading = () => ({ version: null, tasks: null, peers: null, missing: [], ageMs: 0, fetchedAt: Date.now() });
 
-  return { list, bind, open, status: readStatus, handlers: { "workspaces.list": list, "workspace.bind": bind, "entry.open": open, "status.read": readStatus } };
+  /**
+   * Which listed workspaces are agent-hub projects and whether their hub runs, for the row badges and the setup check. The panel asks after it has drawn a list; this re-reads and re-binds
+   * the inventory itself and runs `ahub projects --json` only when a workspace binds on this Mac (in the first one's folder), so a remote-only or unsupported list runs nothing. Only the
+   * workspace id -> state map leaves; a missing executable is `cli_missing`, which the panel reports as a setup problem.
+   */
+  async function readProjects(input) {
+    if (input !== undefined) return done("projects.read", refuse("bad_request"));
+    const ctx = await context();
+    if (ctx.settings.ahubInvalid) return done("projects.read", refuse("invalid_setting"));
+    const raw = await inventory();
+    if (raw === undefined) return done("projects.read", refuse("inventory_unavailable"));
+    const read = readInventory(raw);
+    if (!read.ok) return done("projects.read", read);
+    const bound = read.rows.map(row => bindWorkspaceRow(row, ctx)).filter(b => b.ok).map(b => b.binding);
+    if (!bound.length) return done("projects.read", { ok: true, hubs: {} });
+    let result;
+    try { result = await ports.spawnCli({ executable: ctx.settings.ahubPath ?? "ahub", argv: ["projects", "--json"], cwd: bound[0].root, hostId: bound[0].hostId, ...PROJECTS_LIMITS }); }
+    catch (error) { return done("projects.read", refuse(error && typeof error === "object" && error.code === "ENOENT" ? "cli_missing" : "cli_failed")); }
+    if (!result || typeof result !== "object") return done("projects.read", refuse("cli_failed"));
+    if (result.timedOut === true) return done("projects.read", refuse("cli_timeout"));
+    if (result.truncated === true) return done("projects.read", refuse("cli_output_too_large"));
+    if (result.exitCode !== 0) return done("projects.read", refuse("cli_failed"));
+    let list;
+    try { list = JSON.parse(result.stdout); } catch { return done("projects.read", refuse("unrecognized_output")); }
+    return done("projects.read", projectHubs(list, bound, ctx.canonicalize));
+  }
+
+  return { list, bind, open, status: readStatus, projects: readProjects, handlers: { "workspaces.list": list, "workspace.bind": bind, "entry.open": open, "status.read": readStatus, "projects.read": readProjects } };
 }
 
 /**

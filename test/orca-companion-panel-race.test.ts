@@ -38,7 +38,7 @@ function deferred() {
 const workspaces = ["a", "b"].map(id => ({ id, name: id, branch: "main", root: `/fixture/${id}`, hostId: "local", kind: "worktree", selectable: true }));
 function fixture() {
   const elements = new Map(["rows", "status", "link", "refresh", "dashboard", "console", "family", "statusbtn", "statusbox", "statusline", "statuspeers", "statusnote",
-    "filter", "offrows", "unavailable", "offcount", "cmdbox", "cmd", "copy", "statebadge"].map(id => [id, new Element()]));
+    "filter", "offrows", "unavailable", "offcount", "cmdbox", "cmd", "copy", "statebadge", "setup", "help", "troubleshoot", "issues", "footver"].map(id => [id, new Element()]));
   for (const id of ["dashboard", "console", "family", "statusbtn"]) elements.get(id)!.disabled = true;
   elements.get("link")!.hidden = true;
   elements.get("statusbox")!.hidden = true;
@@ -207,7 +207,7 @@ test("U2: arrow keys move focus between rows and Enter selects exactly as a clic
   expect(f.state().selected).toBeNull();
   rows.key("Enter", b);
   expect(f.state().selected?.id).toBe("b"); expect(b.attributes.get("aria-selected")).toBe("true"); expect(a.attributes.get("aria-selected")).toBe("false");
-  expect(f.get("console").disabled).toBe(false); expect(f.requests).toHaveLength(1); // selecting asks the worker nothing
+  expect(f.get("console").disabled).toBe(false); expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]); // selecting asks the worker nothing
   rows.key(" ", a); expect(f.state().selected?.id).toBe("a");
   expect(rows.key("x", a)).toBe(false);
 });
@@ -248,7 +248,7 @@ test("U2: rows that cannot be opened fold away with their reason and a copy of t
   // a failed copy keeps the command visible and selects it for Cmd+C
   f.breakCopy(); await copy.click();
   expect(f.copies).toHaveLength(1); expect(f.selections).toEqual([command]); expect(command.textContent).toBe("'ahub' 'console'"); expect(copy.textContent).toBe("Press Cmd+C to copy");
-  expect(f.requests).toHaveLength(1); // copying asks the worker nothing and runs nothing
+  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]); // copying asks the worker nothing and runs nothing
   const none = fixture(); await none.listWith([remoteRow]);
   expect(none.get("status").textContent).toContain("No workspace can be opened on this Mac");
 });
@@ -273,4 +273,62 @@ test("U2: the status state is a badge, and the header shows the manifest version
   const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8");
   const version = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8")).version;
   expect(/<span class="ver">([^<]+)<\/span>/.exec(html)?.[1]).toBe(version);
+});
+
+// #5 U3: hub badges from projects.read, the setup notice, and the help links.
+const hubsOf = (f: ReturnType<typeof fixture>) => f.get("rows").children.map(li => li.firstTitle.children.slice(2).map((c: Element) => [c.textContent, c.className]));
+const projectsRequest = (f: ReturnType<typeof fixture>) => f.requests.find(r => r.name === "projects.read")!;
+
+test("U3: after a list with openable rows the panel asks projects.read once and badges the matching rows", async () => {
+  const f = fixture(); await f.initial();
+  const asked = f.requests.filter(r => r.name === "projects.read"); expect(asked).toHaveLength(1); expect(asked[0]!.input).toBeUndefined();
+  asked[0]!.reply.resolve({ ok: true, hubs: { a: "running", b: "unknown" } }); await Promise.resolve(); await Promise.resolve();
+  expect(hubsOf(f)).toEqual([[["hub running", "badge good"]], [["hub", "badge"]]]);
+  f.get("filter").input("running"); expect(f.get("rows").children.map(li => li.hidden)).toEqual([false, true]);
+  expect(f.get("setup").hidden).toBe(true);
+});
+
+test("U3: a projects reply for an older list is dropped; a selection made meanwhile keeps its badges and stays selected", async () => {
+  const f = fixture(); await f.initial(); const first = projectsRequest(f);
+  await f.choose(1); first.reply.resolve({ ok: true, hubs: { b: "stopped" } }); await Promise.resolve(); await Promise.resolve();
+  expect(hubsOf(f)).toEqual([[], [["hub stopped", "badge"]]]); expect(f.state().selected?.id).toBe("b");
+  const again = f.get("refresh").click(); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await again;
+  const late = f.requests.filter(r => r.name === "projects.read");
+  expect(late).toHaveLength(2);
+  first.reply.resolve({ ok: true, hubs: { a: "running" } }); await Promise.resolve();
+  expect(hubsOf(f)).toEqual([[], []]); // the new list's rows got nothing from the old reply
+});
+
+test("U3: a missing ahub is a setup notice; any other projects failure shows nothing", async () => {
+  const f = fixture(); await f.initial();
+  projectsRequest(f).reply.resolve({ ok: false, refusal: "cli_missing", guidance: "The ahub command was not found." }); await Promise.resolve(); await Promise.resolve();
+  expect(f.get("setup").hidden).toBe(false); expect(f.get("setup").textContent).toBe("The ahub command was not found."); expect(hubsOf(f)).toEqual([[], []]);
+  const g = fixture(); await g.initial();
+  projectsRequest(g).reply.resolve({ ok: false, refusal: "cli_failed", guidance: "ahub did not succeed." }); await Promise.resolve(); await Promise.resolve();
+  expect(g.get("setup").hidden).toBe(true); expect(g.get("status").className).toBe("");
+  const h = fixture(); await h.initial(); projectsRequest(h).reply.reject(Error("no answer")); await Promise.resolve(); await Promise.resolve();
+  expect(h.get("setup").hidden).toBe(true);
+});
+
+test("U3: a list with nothing openable asks nothing more and names the setting to change", async () => {
+  const unknown = { ...remoteRow, hostId: null, refusal: "host_unknown", guidance: "Orca did not say which machine this workspace is on.", command: undefined };
+  const f = fixture(); await f.listWith([unknown, { ...unknown, id: "u2" }]);
+  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list"]);
+  expect(f.get("setup").textContent).toContain("Treat a missing host id as this Mac");
+  const g = fixture(); await g.listWith([remoteRow, unknown]);
+  expect(g.get("setup").textContent).toContain("Host ids that mean this Mac");
+  const h = fixture(); await h.listWith([{ ...remoteRow, refusal: "unreal_root" }]);
+  expect(h.get("setup").hidden).toBe(true); // a reason that is not about settings stays on its row
+  const refreshing = h.get("refresh").click(); h.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await refreshing;
+  expect(h.get("setup").hidden).toBe(true);
+});
+
+test("U3: help links open fixed repository pages on a click, and the footer shows the manifest version", async () => {
+  const f = fixture(); await f.initial();
+  void f.get("help").click(); void f.get("troubleshoot").click(); void f.get("issues").click(); // the open replies stay pending: a click asks the worker nothing
+  expect(f.external.map(e => e.url)).toEqual(["https://github.com/STAIxBWLB/ahub-orca#readme", "https://github.com/STAIxBWLB/ahub-orca#troubleshooting", "https://github.com/STAIxBWLB/ahub-orca/issues"]);
+  expect(f.requests.map(r => r.name)).toEqual(["workspaces.list", "projects.read"]);
+  const html = readFileSync(join(import.meta.dir, "../panel/index.html"), "utf8");
+  const version = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8")).version;
+  expect(/<span id="footver">([^<]+)<\/span>/.exec(html)?.[1]).toBe(version);
 });

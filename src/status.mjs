@@ -69,6 +69,29 @@ export function projectStatus(raw, fetchedAt, now) {
   return { ok: true, state, version, tasks, peers, missing, ageMs: age };
 }
 
+/** The hub states the contract's `projects[].state` names; any other value is shown as `unknown`, never copied. */
+export const HUB_STATES = Object.freeze(["running", "stopped"]);
+const MAX_PROJECTS = 1024;
+
+/**
+ * Which of the bound workspaces are agent-hub projects, and their hub state, from the parsed `ahub projects --json` list. Only `root` and `state` of each entry are read; every other field
+ * (ids, ports, pids, a nested status with free text) is never looked at. Roots are compared after canonicalizing ahub's side, because `rows` are already bound to real roots here. An entry
+ * whose folder is gone matches nothing. The answer is a workspace id -> state map, nothing else.
+ */
+export function projectHubs(list, rows, canonicalize) {
+  if (!Array.isArray(list) || list.length > MAX_PROJECTS) return refuse("unrecognized_output");
+  const byRoot = new Map(rows.map(row_ => [row_.root, row_.id]));
+  const hubs = {};
+  for (const project of list) {
+    if (!isObject(project) || typeof project.root !== "string" || !project.root.startsWith("/") || project.root.length > 4096) return refuse("unrecognized_output");
+    let root;
+    try { root = canonicalize(project.root); } catch { continue; }
+    const id = byRoot.get(root);
+    if (id !== undefined) hubs[id] = HUB_STATES.includes(project.state) ? project.state : "unknown";
+  }
+  return { ok: true, hubs };
+}
+
 /** Re-judge an existing reading against a later clock, so the panel can call an old one stale without asking the hub again. */
 export function ageReading(reading, now) {
   if (!reading || reading.ok !== true || !Number.isFinite(reading.fetchedAt)) return { ...reading, state: "unknown" };

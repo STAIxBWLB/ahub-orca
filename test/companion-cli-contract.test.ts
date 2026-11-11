@@ -24,10 +24,10 @@ test("shellQuote gives every golden vector of the contract", () => {
 
 test("every ahub command the companion runs or types is a listed argv form", () => {
   const listed = (bin: string, argv: string[]) => contract.commands.some((c: { bin?: string; argv: string[] }) => (c.bin ?? "ahub") === bin && JSON.stringify(c.argv) === JSON.stringify(argv));
-  // the status read: a fixed argv run by the worker
+  // the status read and the projects read (#5 U3): fixed argvs run by the worker
   const worker = code(read("src/worker.mjs"));
   const run = [...worker.matchAll(/argv:\s*(\[[^\]]*\])/g)].map(m => JSON.parse(m[1]!.replace(/'/g, '"')) as string[]);
-  expect(run).toEqual([["status", "--json"]]);
+  expect(run).toEqual([["status", "--json"], ["projects", "--json"]]);
   for (const argv of run) expect(listed("ahub", argv), argv.join(" ")).toBe(true);
   // the entry points: the dashboard (CLI), the console and the family console (typed into a terminal)
   const source = code(read("src/companion.mjs"));
@@ -67,8 +67,19 @@ test("every status field the reader touches is a listed path, with a type that a
   });
 });
 
-test("the reader does not touch needs, projects or any other path the contract lists but this companion does not use", () => {
-  // only the status reader sees ahub's output (`.cwd` elsewhere is the spawn option), so a path used by a later change must be added to the list above and to this scan's expectation
-  expect(code(read("src/status.mjs"))).not.toMatch(/\.needs\b|\.projectId\b|\.cwd\b|\.needsReview\b|\.pullOnly\b|\.paused\b/);
-  expect(code(read("src/worker.mjs")) + code(read("src/companion.mjs"))).not.toMatch(/\bparsed\.|"projects"/);
+test("every projects field the reader touches is a listed path, and its closed set is the contract's (#5 U3)", () => {
+  const status = code(read("src/status.mjs"));
+  const touched = new Set([...status.matchAll(/\bproject\.(\w+)/g)].map(m => `[].${m[1]}`));
+  expect([...touched].sort()).toEqual(["[].root", "[].state"]);
+  for (const path of touched) expect(contract.projects[path], `${path} is not a listed projects path`).toBeDefined();
+  expect(contract.projects["[].state"].presence).toMatch(/running and stopped/);
+  // @ts-ignore TS7016: untyped plain JavaScript by design
+  return import("../src/status.mjs").then((reader: any) => expect(reader.HUB_STATES).toEqual(["running", "stopped"]));
+});
+
+test("the reader does not touch needs or any other path the contract lists but this companion does not use", () => {
+  // only the readers in status.mjs see ahub's output (`.cwd` elsewhere is the spawn option), so a path used by a later change must be added to the lists above and to this scan's expectation
+  expect(code(read("src/status.mjs"))).not.toMatch(/\.needs\b|\.projectId\b|\.cwd\b|\.needsReview\b|\.pullOnly\b|\.paused\b|\.stateDir\b|\.basePort\b|\.pid\b|\.instanceId\b/);
+  // the worker hands parsed output to a reader and touches none of it itself
+  expect(code(read("src/worker.mjs")) + code(read("src/companion.mjs"))).not.toMatch(/\bparsed\.|\blist\.[a-z]/);
 });
