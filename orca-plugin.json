@@ -18,6 +18,14 @@
     "panels": [
       { "id": "chooser", "title": "agent-hub", "icon": "layers", "entry": "panel/index.html" }
     ],
+    "commands": [
+      { "id": "open-console", "title": "agent-hub: Open console (remembered workspace)", "when": "workspace" },
+      { "id": "open-dashboard", "title": "agent-hub: Open dashboard (remembered workspace)", "when": "workspace" },
+      { "id": "show-status", "title": "agent-hub: Show status (remembered workspace)", "when": "workspace" }
+    ],
+    "keybindings": [
+      { "command": "open-console", "key": "Mod+Alt+Shift+H", "when": "workspace" }
+    ],
     "settings": [
       { "key": "localHostIds", "title": "Host ids that mean this Mac", "description": "Comma separated. A workspace whose host id is not listed here is treated as remote and nothing is run for it on this Mac.", "type": "string", "default": "", "maxLength": 512, "placeholder": "e.g. local" },
       { "key": "trustNullHostAsLocal", "title": "Treat a missing host id as this Mac", "description": "Orca leaves a workspace's host id empty for some workspaces. Turn this on only if all of yours are on this Mac.", "type": "boolean", "default": false },
@@ -28,6 +36,7 @@
     { "kind": "workspace:read" },
     { "kind": "workspace:write" },
     { "kind": "terminal:send" },
-    { "kind": "settings:own" }
+    { "kind": "settings:own" },
+    { "kind": "storage:own" }
   ]
 }

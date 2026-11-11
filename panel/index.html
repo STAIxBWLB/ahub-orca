@@ -84,7 +84,7 @@
   <span class="note">agent-hub companion <span id="footver">0.1.0</span>, ahub CLI contract v1</span>
 </footer>
 <script type="module">
-// Nothing is stored: not in localStorage, not in plugin storage. The selection lives in this page's memory and is checked again by the worker before every effect.
+// The panel stores nothing itself (no localStorage). It asks the worker to remember the chosen workspace's binding, which the worker verifies before every write and every use.
 const $ = id => document.getElementById(id);
 const rows = $("rows"), offrows = $("offrows"), status = $("status"), link = $("link"), filter = $("filter");
 let selected = null;          // { id, hostId, root, kind } the person chose; the worker verifies it again before acting
@@ -94,6 +94,11 @@ let generation = 0;          // selection, refresh and open responses belong onl
 const LINK_LIVES_MS = 55_000; // ahub's own link expires after 60 seconds
 const FILTER_FROM = 9;        // the filter box appears only when there are more rows than fit at a glance
 let listGeneration = 0;      // the rows drawn by one refresh; a projects reply belongs only to the list it was asked for
+let hubs = [];               // the last projects reply, re-applied when Orca's own events redraw the list (events never run the CLI)
+let focusedContext = null;   // Orca's last workspace.changed context: a hint only, never a selection
+let eventKeep = null;        // the selection an event redraw is carrying while its list read is in flight, so a second event before the reply keeps it too
+const MISSING = "That workspace is no longer in Orca's list. Select again.";
+const same = (a, b) => a.id === b.id && a.hostId === b.hostId && a.root === b.root && a.kind === b.kind;
 
 // A command shown with a refusal is the worker's own fixed words (never project text); the panel only shows it and offers to copy it.
 function showCommand(command) { $("cmdbox").hidden = !command; $("cmd").textContent = command ?? ""; $("copy").textContent = "Copy command"; }
@@ -163,13 +168,15 @@ async function readStatus() {
   finally { if (requestGeneration === generation && selected) setActions(true); }
 }
 
-function choose(li, row) {
+function choose(li, row, remember = true) {
   generation++;
   for (const other of rows.children) { other.setAttribute("aria-selected", "false"); other.tabIndex = -1; }
   li.setAttribute("aria-selected", "true"); li.tabIndex = 0;
   selected = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
   setActions(true); dropLink(); dropStatus();
   say("Selected. Choose a screen to open, or show its status.");
+  // Remembered for the palette commands. A store that is missing or refuses changes nothing here: the selection in this page still works.
+  if (remember) ask("selection.remember", { snapshot: Object.freeze({ ...selected }) }).catch(() => {});
 }
 // Setup problems are shown once above the list, in the words of the worker's refusal or of the plugin settings: nothing here is guessed or fixed for the person.
 const SETTINGS = "Settings → Plugins → agent-hub";
@@ -186,9 +193,12 @@ async function readProjects(forList) {
   try { result = await ask("projects.read", undefined); } catch { return; }
   if (forList !== listGeneration || !result) return;
   if (!result.ok) { if (result.refusal === "cli_missing") setup(result.guidance); return; }
-  // A badge goes only on a row whose drawn binding is the one the worker matched: same id, host, kind and real root. A workspace that changed in between gets none.
+  hubs = result.hubs; drawHubs();
+}
+// A badge goes only on a row whose drawn binding is the one the worker matched: same id, host, kind and real root. A workspace that changed in between gets none.
+function drawHubs() {
   for (const li of rows.children) {
-    const hub = result.hubs.find(h => h.id === li.binding.id && h.hostId === li.binding.hostId && h.root === li.binding.root && h.kind === li.binding.kind);
+    const hub = hubs.find(h => same(h, li.binding));
     if (!hub) continue;
     const state = hub.state;
     const tag = document.createElement("span");
@@ -203,7 +213,7 @@ function rowLines(li, row) {
   const title = document.createElement("div"), name = document.createElement("span"), branch = document.createElement("span");
   name.className = "name"; name.textContent = row.name; branch.className = "note"; branch.textContent = row.branch ? "  [" + row.branch + "]" : "";
   title.append(name, branch);
-  li.firstTitle = title; li.binding = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
+  li.firstTitle = title; li.binding = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind }; li.shown = { name: row.name, branch: row.branch ?? null };
   const root = document.createElement("div");
   root.className = "root"; root.textContent = row.root;
   const host = document.createElement("div");
@@ -223,7 +233,7 @@ function renderRows(list) {
     if (row.selectable) {
       li.className = "row"; li.setAttribute("role", "option"); li.setAttribute("aria-selected", "false"); li.tabIndex = first ? 0 : -1; first = false;
       li.addEventListener("click", () => choose(li, row));
-      li.chooseRow = () => choose(li, row);
+      li.chooseRow = (remember = true) => choose(li, row, remember);
       rows.append(li);
     } else {
       li.className = "row off"; off++;
@@ -243,6 +253,19 @@ function renderRows(list) {
   }
   $("unavailable").hidden = off === 0;
   $("offcount").textContent = off + " not available on this Mac";
+  markFocused();
+}
+// Orca says only which name and branch it shows as focused, not which workspace id. The one row with exactly that name and branch is marked as a guess and becomes the Tab stop while nothing is
+// selected; zero or several matches mark nothing. The hint never selects a row and never moves focus.
+function markFocused() {
+  for (const li of rows.children) { li.focusHint?.remove(); li.focusHint = null; }
+  const ctx = focusedContext, matches = ctx ? [...rows.children].filter(li => li.shown.name === ctx.displayName && li.shown.branch === (ctx.branch ?? null)) : [];
+  if (matches.length === 1) {
+    const tag = document.createElement("span");
+    tag.className = "badge"; tag.textContent = "focused in Orca?";
+    matches[0].firstTitle.append(tag); matches[0].focusHint = tag;
+  }
+  applyFilter();
 }
 // Arrow keys move between the visible rows; Enter or Space selects the focused one, exactly as a click does.
 rows.addEventListener("keydown", event => {
@@ -261,13 +284,15 @@ function applyFilter() {
   for (const li of [...rows.children, ...offrows.children]) li.hidden = !words.every(word => li.searchText.includes(word));
   // Keep exactly one visible row reachable by Tab: the selected one when it is shown, else the first shown.
   const visible = [...rows.children].filter(li => !li.hidden);
-  const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible[0];
+  const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible.find(li => li.focusHint) ?? visible[0];
   for (const li of rows.children) li.tabIndex = li === stop ? 0 : -1;
 }
 filter.addEventListener("input", applyFilter);
 
-async function refresh() {
+// `event` is set only when Orca's own workspace events redraw the list: the selection survives if a row with exactly its binding is drawn again. Events read Orca's list only, never the CLI.
+async function refresh(event = null) {
   const requestGeneration = ++generation;
+  eventKeep = event ? event.keep : null;
   selected = null; setActions(false); dropLink(); dropStatus();
   say("Reading Orca's workspaces...");
   try {
@@ -276,9 +301,24 @@ async function refresh() {
     if (!result.ok) { renderRows([]); say(result.guidance, true, result.command); return; }
     renderRows(result.rows);
     setup(setupFromRows(result.rows));
-    if (result.rows.some(row => row.selectable)) void readProjects(listGeneration);
-    say(result.rows.some(row => row.selectable) ? "Select the workspace to open." : result.rows.length ? "No workspace can be opened on this Mac; the reasons are listed below." : "Orca lists no workspaces.");
+    const any = result.rows.some(row => row.selectable);
+    say(any ? "Select the workspace to open." : result.rows.length ? "No workspace can be opened on this Mac; the reasons are listed below." : "Orca lists no workspaces.");
+    if (event) {
+      eventKeep = null; drawHubs();
+      const li = event.keep && [...rows.children].find(li => same(li.binding, event.keep));
+      if (li) { li.chooseRow(false); say("Orca's workspaces changed. Your selection is still there."); } else if (event.keep) say(MISSING, true);
+    } else { hubs = []; if (any) { void readProjects(listGeneration); void recall(listGeneration, generation); } }
   } catch { if (requestGeneration === generation) { renderRows([]); say("The companion did not answer. Disable and re-enable it from Orca's plugin list.", true); } }
+}
+
+// The workspace chosen last time is selected again only if nothing happened since this list was drawn and a row with exactly its binding is here. The worker has already verified it.
+async function recall(forList, forGeneration) {
+  let result;
+  try { result = await ask("selection.recall", undefined); } catch { return; }
+  if (forList !== listGeneration || forGeneration !== generation || !result || !result.ok) return;
+  const li = result.selection && [...rows.children].find(li => same(li.binding, result.selection));
+  if (li) { li.chooseRow(false); say("Selected the workspace you chose last time. Choose a screen to open, or show its status."); }
+  else if (result.dropped) say("The workspace you chose last time was forgotten: " + result.dropped);
 }
 
 async function open(kind) {
@@ -324,10 +364,15 @@ for (const [id, url] of Object.entries(PAGES)) $(id).addEventListener("click", a
 $("statusbtn").addEventListener("click", readStatus);
 window.addEventListener("focus", drawStatus);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) drawStatus(); });
-$("refresh").addEventListener("click", refresh);
+$("refresh").addEventListener("click", () => refresh());
 $("dashboard").addEventListener("click", () => open("dashboard"));
 $("console").addEventListener("click", () => open("console"));
 $("family").addEventListener("click", () => open("family"));
+// Orca's workspace events (frames need no manifest entry for them). Created and removed redraw the list; changed only moves the focused-row hint.
+if (typeof orca.on === "function") {
+  for (const name of ["workspace.created", "workspace.removed"]) orca.on(name, () => { void refresh({ keep: selected ?? eventKeep }); });
+  orca.on("workspace.changed", payload => { focusedContext = payload && payload.context ? payload.context : null; markFocused(); });
+}
 refresh();
 </script>
 </body>

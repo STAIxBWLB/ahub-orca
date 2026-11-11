@@ -159,7 +159,7 @@ test("stale-binding cases: a changed, missing, remote or re-pointed workspace is
   expect(s.cli.calls).toHaveLength(1);
 });
 
-test("refresh is a user action only: no poller, no transcript read, no write, no new host method, and the manifest is unchanged", () => {
+test("refresh is a user or context action only: no poller, no transcript read, no write but the remembered selection, and no host method beyond #5 D1's storage", () => {
   const read = (rel: string) => readFileSync(join(import.meta.dir, "..", rel), "utf8");
   const code = (text: string) => text.replace(/^\s*\/\/.*$/gm, "").replace(/\s\/\/ .*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
   const worker_ = code(read("src/worker.mjs")), status_ = code(read("src/status.mjs")), panel = code(read("panel/index.html"));
@@ -172,10 +172,10 @@ test("refresh is a user action only: no poller, no transcript read, no write, no
   expect(panel.match(/ask\("status\.read"/g)).toHaveLength(1);
   expect(panel).toMatch(/\$\("statusbtn"\)\.addEventListener\("click", readStatus\)/);
   expect([...panel.matchAll(/readStatus\(\)/g)].length).toBe(1); // the declaration only: nothing calls it on load, focus or a timer
-  // the host methods the worker uses are unchanged from O1, so the manifest asks for nothing new
+  // the host methods are O1's plus the storage of the remembered selection (#5 D1), so the manifest adds storage:own and nothing else
   const used = [...new Set([...worker_.matchAll(/host\.(?:call|has)\("([a-z.A-Z]+)"/g)].map(m => m[1]))].sort();
-  expect(used).toEqual(["settings.get", "terminal.create", "workspace.list", "workspace.open"]);
-  expect(JSON.parse(read("orca-plugin.json")).capabilities.map((c: { kind: string }) => c.kind).sort()).toEqual(["settings:own", "terminal:send", "workspace:read", "workspace:write"]);
+  expect(used).toEqual(["settings.get", "storage.delete", "storage.get", "storage.set", "terminal.create", "workspace.list", "workspace.open"]);
+  expect(JSON.parse(read("orca-plugin.json")).capabilities.map((c: { kind: string }) => c.kind).sort()).toEqual(["settings:own", "storage:own", "terminal:send", "workspace:read", "workspace:write"]);
   // no terminal focus: nothing in the plugin calls `orca terminal switch` or maps a plugin terminal id to a CLI handle
   expect(worker_ + status_ + panel).not.toMatch(/terminal switch|"switch"|terminalId|--terminal|orca terminal/);
 });

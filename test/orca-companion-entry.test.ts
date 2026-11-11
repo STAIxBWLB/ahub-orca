@@ -217,9 +217,11 @@ test("AC6: the one-time link is returned once as a transient value, never logged
   expect(s.logs).toEqual(["entry.open: ok"]);
   expect(JSON.stringify(s.cli.calls)).not.toContain("ONE-TIME-TICKET");
   expect(JSON.stringify(s.host.calls)).not.toContain("ONE-TIME-TICKET");
-  // the worker never asks the host for storage or secrets, so there is nowhere the link could be kept
+  // opening asks the host for no storage or secrets, so there is nowhere the link could be kept; the worker's only stored key is the remembered selection (#5 D1), written from a snapshot
   expect(s.host.calls.filter(m => /^(storage|secrets)\./.test(m))).toEqual([]);
-  expect(readFileSync(join(import.meta.dir, "../src/worker.mjs"), "utf8")).not.toMatch(/storage\.(set|get)|secrets\./);
+  const workerSource = readFileSync(join(import.meta.dir, "../src/worker.mjs"), "utf8");
+  expect(workerSource).not.toMatch(/secrets\./);
+  expect([...workerSource.matchAll(/host\.call\("storage\.(\w+)", (\{[^}]*\})/g)].map(m => [m[1], m[2]])).toEqual([["get", "{ key: SELECTION_KEY }"], ["set", "{ key: SELECTION_KEY, value }"], ["delete", "{ key: SELECTION_KEY }"]]);
   // The worker cannot open it: shell.openExternal is a panel and editor method, and the host refuses it to a worker whatever the gesture.
   await expect(s.fake.call("shell.openExternal", { url: link }, { userGesture: true })).rejects.toMatchObject({ code: "not_permitted" });
   expect(s.fake.externalNavigation).toEqual([]);
@@ -298,12 +300,16 @@ test("the real child-process port: fixed argv, no shell, the folder as cwd only,
 test("the manifest asks for exactly the host methods the worker uses and nothing broader", () => {
   const manifest = JSON.parse(readFileSync(join(import.meta.dir, "../orca-plugin.json"), "utf8"));
   expect(manifest.manifestVersion).toBe(2); expect(manifest.execution).toBe("trusted-worker"); expect(manifest.pluginApi).toBe(1);
-  expect(manifest.capabilities.map((c: { kind: string }) => c.kind).sort()).toEqual(["settings:own", "terminal:send", "workspace:read", "workspace:write"]);
-  for (const forbidden of ["agent:launch", "agent:read", "terminal:read", "secrets:own", "storage:own", "notifications:show", "appearance:write"]) expect(manifest.capabilities.map((c: { kind: string }) => c.kind)).not.toContain(forbidden);
-  expect(manifest.contributes.hooks).toBeUndefined(); expect(manifest.contributes.events).toBeUndefined(); expect(manifest.contributes.commands).toBeUndefined();
+  // storage:own is #5 D1, the remembered selection; everything else is as in O1
+  expect(manifest.capabilities.map((c: { kind: string }) => c.kind).sort()).toEqual(["settings:own", "storage:own", "terminal:send", "workspace:read", "workspace:write"]);
+  for (const forbidden of ["agent:launch", "agent:read", "terminal:read", "secrets:own", "notifications:show", "appearance:write"]) expect(manifest.capabilities.map((c: { kind: string }) => c.kind)).not.toContain(forbidden);
+  expect(manifest.contributes.hooks).toBeUndefined(); expect(manifest.contributes.events).toBeUndefined();
+  // the palette commands are exactly the worker's, each only where a workspace is active, and one shortcut for Open console
+  expect(manifest.contributes.commands.map((c: { id: string; when: string }) => [c.id, c.when])).toEqual(Object.keys(worker.COMMANDS).map(id => [id, "workspace"]));
+  expect(manifest.contributes.keybindings).toEqual([{ command: "open-console", key: "Mod+Alt+Shift+H", when: "workspace" }]);
   const source = readFileSync(join(import.meta.dir, "../src/worker.mjs"), "utf8");
   const used = [...new Set([...source.matchAll(/host\.(?:call|has)\("([a-z.A-Z]+)"/g)].map(m => m[1]))].sort();
-  expect(used).toEqual(["settings.get", "terminal.create", "workspace.list", "workspace.open"].filter(m => used.includes(m)));
+  expect(used).toEqual(["settings.get", "storage.delete", "storage.get", "storage.set", "terminal.create", "workspace.list", "workspace.open"]);
   for (const verb of ["approve", "assign", "complete", "retry", "stop", "upgrade", "task", "agent.launch", "terminal.sendText"]) expect(source, verb).not.toMatch(new RegExp(`host\\.call\\("[^"]*${verb.replace(".", "\\.")}`));
   // `--json` is forbidden on `ahub ui` (it prints a link, not JSON). It is allowed on `ahub status` (O2). So: no argv that holds both "ui" and "--json", in the source or at runtime.
   expect(source).not.toMatch(/\[\s*"ui"\s*,[^\]]*--json/);
