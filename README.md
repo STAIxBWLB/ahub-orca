@@ -110,19 +110,35 @@ The plugin asks for four capabilities, and nothing else:
 
 Every refusal says what happened and runs nothing.
 
-| The panel says | Do this |
-| --- | --- |
-| Orca did not say which machine this workspace is on | set "Host ids that mean this Mac", or turn on "Treat a missing host id as this Mac" if all workspaces are local, then click Refresh workspaces |
-| This workspace is on another host | run `ahub console` in a terminal on that host |
-| The ahub command was not found | set "ahub executable" to the absolute path of `ahub` |
-| A plugin setting is not valid | "ahub executable" must be an absolute path to a file named `ahub` |
-| ahub did not succeed | start the project's hub with `ahub up` in a terminal, then try again |
-| No agent-hub is running for this project | run `ahub up` in the project |
-| This project's agent-hub is too old | upgrade it with `ahub upgrade` |
-| That workspace changed / is no longer in Orca's list | select it again |
-| The workspace's folder is not a real absolute folder on this Mac | check the workspace's folder in Orca |
-| This companion is not qualified on this operating system | open a terminal in the workspace and run `ahub console` |
-| The companion did not answer | disable and re-enable the plugin in Settings → Plugins, then check `orca plugin logs <plugin key>` |
+| Code | The panel says | Do this |
+| --- | --- | --- |
+| `host_unknown` | Orca did not say which machine this workspace is on | set "Host ids that mean this Mac", or turn on "Treat a missing host id as this Mac" if all workspaces are local, then click Refresh workspaces |
+| `remote` | This workspace is on another host | run `ahub console` in a terminal on that host |
+| `cli_missing` | The ahub command was not found | set "ahub executable" to the absolute path of `ahub` |
+| `invalid_setting` | A plugin setting is not valid | "ahub executable" must be an absolute path to a file named `ahub` |
+| `cli_failed` | ahub did not succeed | start the project's hub with `ahub up` in a terminal, then try again |
+| `cli_timeout` | ahub did not answer in time | check that `ahub status` answers in a terminal in the project, then try again |
+| `cli_output_too_large` | ahub printed more than expected | run the same command (`ahub ui` or `ahub status`) in a terminal to see what it prints; the installed ahub may not match [COMPATIBILITY.md](COMPATIBILITY.md) |
+| `unrecognized_output` | ahub answered in a form this companion does not recognize | run `ahub ui` in a terminal; check the ahub version against [COMPATIBILITY.md](COMPATIBILITY.md) |
+| `not_offered` | This Orca does not offer what that needs | update Orca; until then, open a terminal in the workspace and run the command shown |
+| `unsupported_platform` | This companion is not qualified on this operating system | open a terminal in the workspace and run `ahub console` |
+| `missing` | That workspace is no longer in Orca's list | click Refresh workspaces and select it again |
+| `changed` | That workspace changed (its id, host, kind or root) | select it again; if a folder link was re-pointed, check it first |
+| `unreal_root` | The workspace's folder is not a real absolute folder on this Mac | check the workspace's folder in Orca; a missing or relative folder cannot be used |
+| `inventory_unavailable` | Orca did not list its workspaces | close and reopen the panel; if it repeats, restart the plugin (`orca plugin restart <plugin key>`) |
+| `truncated` | Orca's workspace list was cut short | click Refresh workspaces; if it repeats, report it with `orca plugin logs <plugin key>` |
+| `malformed` | Orca returned a workspace this companion cannot read exactly | check that Orca matches [COMPATIBILITY.md](COMPATIBILITY.md); report it with `orca plugin logs <plugin key>` |
+| `duplicate` | Two workspaces share one id | fix or remove the duplicate workspace in Orca, then click Refresh workspaces |
+| `bad_request` | That request was not valid | reopen the panel; if it repeats, report it with `orca plugin logs <plugin key>` |
+| status `offline` | No agent-hub is running for this project | run `ahub up` in the project |
+| status `unavailable_version` | This project's agent-hub is too old | upgrade it with `ahub upgrade` |
+| status `unknown` | The reading has no time | click Show status again |
+| status `failed` | ahub did not answer the status request | run `ahub status` in a terminal in the project to see why |
+| status `timeout` | ahub did not answer in time | as `cli_timeout` |
+| status `too_large` | ahub printed more than expected | as `cli_output_too_large` |
+| none | The companion did not answer | disable and re-enable the plugin in Settings → Plugins, then check `orca plugin logs <plugin key>` |
+
+The plugin key is `local.agent-hub-companion` for a development folder and `<publisher>.agent-hub-companion` for an install.
 
 ## Uninstall
 
@@ -132,8 +148,8 @@ orca plugin uninstall <publisher>.agent-hub-companion   # remove it
 orca plugin dev unload .                                # remove a development folder
 ```
 
-The plugin key is `local.agent-hub-companion` for a development folder. Removing it stops no agent,
-removes no worktree, edits no hub state and restores no setting, because it never changed any.
+Removing it stops no agent, removes no worktree, edits no hub state and restores no setting,
+because it never changed any.
 
 ## Known limitations
 

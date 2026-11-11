@@ -136,3 +136,13 @@ test("AC9: the support matrix and the docs say the same thing about what is clai
   for (const c of matrix.combinations) expect(readme, c.id).toContain(c.id);
   expect(readme).toMatch(/person-run/);
 });
+
+test("#5 U1: the README's troubleshooting table names every refusal and status code", async () => {
+  const readme = readFileSync(join(PLUGIN, "README.md"), "utf8");
+  // @ts-ignore TS7016: untyped plain JavaScript by design
+  const companion: any = await import("../src/companion.mjs");
+  // @ts-ignore TS7016: untyped plain JavaScript by design
+  const status: any = await import("../src/status.mjs");
+  for (const code of Object.keys(companion.REFUSALS)) expect(readme, code).toContain("| `" + code + "` |");
+  for (const code of Object.keys(status.STATUS_SENTENCES)) expect(readme, code).toContain("| status `" + code + "` |");
+});

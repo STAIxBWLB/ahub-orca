@@ -9,7 +9,7 @@ Content hash of the plugin folder (`orca plugin inspect . --json`, `contentHash`
 - before (T1, `receipts/inspect.json`): `8d9afb33f4d367f485e26b2abca397c1024729d697a9154fb0982edf994dd30a`
 - after (this branch's working tree): `024f3a6cfab927de7a823d408ce5fab820b526b3114ed4541895de6a15f0eb4d`
 
-The release hash is the one `orca plugin release-entry .` prints for the tagged commit ([RELEASE.md](../RELEASE.md)); it is not recorded here.
+The "after" hash is of the working tree at the time of the run, not of any commit: every later commit, including this receipt's, changes it. It is not a reproducibility or release claim. The release hash is the one `orca plugin release-entry .` prints for the tagged commit ([RELEASE.md](../RELEASE.md)).
 
 Not run: install from a tag (no tag), and anything with `--approve`.
 
