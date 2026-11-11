@@ -46,11 +46,13 @@ export function createCompanion(ports) {
     // Display only: names and branches label a row, they never select one. A row that cannot be bound says why, so it can still be seen but not chosen.
     const rows = read.rows.map(row => {
       const bound = bindWorkspaceRow(row, ctx);
-      return { id: row.id, name: row.name, branch: row.branch, kind: row.kind, hostId: row.hostId, root: bound.ok ? bound.binding.root : row.path, selectable: bound.ok, ...(bound.ok ? {} : { refusal: bound.refusal, guidance: bound.guidance }) };
+      return { id: row.id, name: row.name, branch: row.branch, kind: row.kind, hostId: row.hostId, root: bound.ok ? bound.binding.root : row.path, selectable: bound.ok, ...(bound.ok ? {} : (({ refusal, guidance, command }) => command ? { refusal, guidance, command } : { refusal, guidance })(withCommand(bound))) };
     });
     return done("workspaces.list", { ok: true, rows });
   }
   const bindWorkspaceRow = (row, ctx) => bindWorkspace({ workspaces: [row], truncated: false }, row.id, ctx);
+  // The refusals whose sentence tells the person to run the console themselves carry that command as fixed words, so the panel can offer to copy it without holding any command text of its own.
+  const withCommand = refusal => refusal.refusal === "remote" || refusal.refusal === "unsupported_platform" ? { ...refusal, command: REMOTE_COMMAND } : refusal;
 
   async function bind(input) {
     const value = exact(input, ["id"]);
@@ -72,7 +74,7 @@ export function createCompanion(ports) {
     if (raw === undefined) return done("entry.open", refuse("inventory_unavailable"));
     const verified = verifyBinding(value.snapshot, raw, ctx);
     // A workspace on another host is never run here and its loopback link is never opened here: the person gets the existing remote console command to run there.
-    if (!verified.ok) return done("entry.open", verified.refusal === "remote" ? { ...verified, command: REMOTE_COMMAND } : verified);
+    if (!verified.ok) return done("entry.open", withCommand(verified));
     const entry = entryFor(value.kind, verified.binding, ctx.settings);
     if (entry.via === "cli") {
       const result = await runCli(ports.spawnCli, entry);

@@ -5,54 +5,101 @@
 <title>agent-hub</title>
 <style>
   body { margin: 0; padding: 12px; font: 13px/1.45 system-ui, sans-serif; color: var(--orca-foreground); background: var(--orca-background); }
-  h1 { font-size: 13px; margin: 0 0 8px; }
+  h1 { font-size: 13px; margin: 0; display: flex; align-items: baseline; gap: 6px; }
+  h2 { font-size: 12px; margin: 0 0 6px; }
   p, li { margin: 4px 0; }
-  .note { opacity: .75; }
-  ul { list-style: none; margin: 8px 0; padding: 0; }
-  li.row { border: 1px solid color-mix(in srgb, var(--orca-foreground) 20%, transparent); border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
-  li.row[aria-selected="true"] { border-color: var(--orca-primary); }
-  li.row.off { opacity: .6; }
-  .root { font-family: ui-monospace, monospace; word-break: break-all; }
-  button { font: inherit; margin: 6px 6px 0 0; padding: 4px 10px; }
-  button[disabled] { opacity: .5; }
+  .ver, .note, summary { color: var(--orca-muted-foreground); }
+  .ver { font-weight: normal; font-size: 11px; }
+  details { margin: 4px 0 8px; }
+  summary { cursor: pointer; }
+  .bar { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+  input[type="search"] { flex: 1; min-width: 0; font: inherit; padding: 4px 8px; color: inherit; background: var(--orca-background); border: 1px solid var(--orca-input, var(--orca-border)); border-radius: var(--orca-radius, 6px); }
+  ul { list-style: none; margin: 6px 0; padding: 0; }
+  li.row { border: 1px solid var(--orca-border); border-radius: var(--orca-radius, 6px); padding: 6px 8px; margin: 6px 0; background: var(--orca-card); color: var(--orca-card-foreground); }
+  #rows li.row { cursor: pointer; }
+  #rows li.row:hover { background: var(--orca-accent); color: var(--orca-accent-foreground); }
+  li.row[aria-selected="true"] { border-color: var(--orca-primary); box-shadow: inset 3px 0 0 var(--orca-primary); }
+  li.row.off { opacity: .75; }
+  .name { font-weight: 600; }
+  .root, code { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  button { font: inherit; padding: 4px 10px; cursor: pointer; color: var(--orca-secondary-foreground); background: var(--orca-secondary); border: 1px solid var(--orca-border); border-radius: var(--orca-radius, 6px); }
+  button.primary { color: var(--orca-primary-foreground); background: var(--orca-primary); border-color: var(--orca-primary); }
+  button[disabled] { opacity: .5; cursor: default; }
+  button:focus-visible, li.row:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--orca-ring, var(--orca-primary)); outline-offset: 1px; }
+  #actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   #status { margin-top: 10px; min-height: 2.8em; }
   #status.bad { color: var(--orca-destructive, #c0392b); }
-  code { font-family: ui-monospace, monospace; }
+  li.row code { margin-right: 6px; }
+  #cmdbox { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  #cmdbox[hidden] { display: none; }
+  #statusbox { margin-top: 10px; padding: 8px; border: 1px solid var(--orca-border); border-radius: var(--orca-radius, 6px); background: var(--orca-card); }
+  .badge { display: inline-block; padding: 0 6px; margin-right: 6px; font-size: 11px; line-height: 18px; border-radius: 9px; border: 1px solid var(--orca-border); color: var(--orca-muted-foreground); background: var(--orca-muted); }
+  .badge.good { color: var(--orca-primary-foreground); background: var(--orca-primary); border-color: var(--orca-primary); }
+  .badge.bad { color: var(--orca-destructive, #c0392b); background: transparent; border-color: var(--orca-destructive, #c0392b); }
+  .offscreen { position: fixed; left: -9999px; top: 0; }
 </style>
 </head>
 <body>
-<h1>agent-hub</h1>
-<p class="note">Opens an existing agent-hub screen for one workspace. It never approves, assigns, completes, retries, stops or upgrades anything. Those stay in the screens it opens.</p>
-<div><button id="refresh" type="button">Refresh workspaces</button></div>
-<ul id="rows" aria-label="Workspaces"></ul>
+<h1>agent-hub <span class="ver">0.1.0</span></h1>
+<p class="note">Opens an existing agent-hub screen for one workspace.</p>
+<details>
+  <summary>What it never does</summary>
+  <p class="note">It never approves, assigns, completes, retries, stops or upgrades anything. Those stay in the screens it opens.</p>
+</details>
+<div class="bar">
+  <input id="filter" type="search" placeholder="Filter workspaces" aria-label="Filter workspaces" hidden>
+  <button id="refresh" type="button">Refresh workspaces</button>
+</div>
+<ul id="rows" role="listbox" aria-label="Workspaces"></ul>
+<details id="unavailable" hidden>
+  <summary id="offcount"></summary>
+  <ul id="offrows" aria-label="Workspaces not available on this Mac"></ul>
+</details>
 <div id="actions">
+  <button id="console" type="button" class="primary" disabled>Open console</button>
   <button id="dashboard" type="button" disabled>Open dashboard</button>
-  <button id="console" type="button" disabled>Open console</button>
   <button id="family" type="button" disabled>Open family console</button>
-  <button id="link" type="button" hidden>Open the link</button>
   <button id="statusbtn" type="button" disabled>Show status</button>
+  <button id="link" type="button" class="primary" hidden>Open the link</button>
 </div>
 <div id="statusbox" aria-live="polite" hidden>
-  <h1>Status</h1>
-  <p id="statusline"></p>
+  <h2>Status</h2>
+  <p><span id="statebadge" class="badge"></span><span id="statusline"></span></p>
   <ul id="statuspeers" aria-label="Peers"></ul>
   <p class="note" id="statusnote"></p>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
+<div id="cmdbox" hidden><code id="cmd"></code><button id="copy" type="button">Copy command</button></div>
 <script type="module">
 // Nothing is stored: not in localStorage, not in plugin storage. The selection lives in this page's memory and is checked again by the worker before every effect.
 const $ = id => document.getElementById(id);
-const rows = $("rows"), status = $("status"), link = $("link");
+const rows = $("rows"), offrows = $("offrows"), status = $("status"), link = $("link"), filter = $("filter");
 let selected = null;          // { id, hostId, root, kind } the person chose; the worker verifies it again before acting
 let pendingLink = null;       // a one-time `ahub ui` link, held only until it is used or has expired
 let linkTimer = 0;
 let generation = 0;          // selection, refresh and open responses belong only to their initiating UI state
 const LINK_LIVES_MS = 55_000; // ahub's own link expires after 60 seconds
+const FILTER_FROM = 9;        // the filter box appears only when there are more rows than fit at a glance
 
-const say = (text, bad = false) => { status.textContent = text; status.className = bad ? "bad" : ""; };
+// A command shown with a refusal is the worker's own fixed words (never project text); the panel only shows it and offers to copy it.
+function showCommand(command) { $("cmdbox").hidden = !command; $("cmd").textContent = command ?? ""; $("copy").textContent = "Copy command"; }
+const say = (text, bad = false, command = null) => { status.textContent = text; status.className = bad ? "bad" : ""; showCommand(command); };
 const ask = (name, input) => orca.plugin.request(name, input, { timeoutMs: 30_000 });
 const setActions = on => { for (const id of ["dashboard", "console", "family", "statusbtn"]) $(id).disabled = !on; };
 const dropLink = () => { pendingLink = null; link.hidden = true; clearTimeout(linkTimer); };
+
+// Orca's plugin frames refuse navigator.clipboard; execCommand("copy") works only inside the click that asked for it. If it fails, the text is left selected for Cmd+C.
+function copyText(text, button, fallback) {
+  const area = document.createElement("textarea");
+  area.value = text; area.setAttribute("readonly", ""); area.className = "offscreen";
+  document.body.append(area); area.select();
+  let copied = false;
+  try { copied = document.execCommand("copy"); } catch { copied = false; }
+  area.remove();
+  if (!copied && fallback) { try { window.getSelection().selectAllChildren(fallback); } catch { /* nothing more to offer */ } }
+  button.textContent = copied ? "Copied" : "Press Cmd+C to copy";
+}
+$("copy").addEventListener("click", () => copyText($("cmd").textContent, $("copy"), $("cmd")));
 
 // The status reading (counts and closed words only). It is fetched ONLY when the person clicks "Show status"; nothing here polls and there is no recurring timer for it. An old reading is
 // re-labelled stale from the clock when the panel is drawn again, and it is drawn again when the person returns to it (focus or visibility): a context change, never a request.
@@ -63,6 +110,8 @@ const WORDS = {
   unavailable_version: "This project's agent-hub is too old to report these fields. Upgrade it yourself with `ahub upgrade`; this panel does not.",
   unknown: "The reading has no time, so its age is unknown.",
 };
+const TONE = { running: "good", offline: "bad", unavailable_version: "bad" };
+function badge(target, word) { target.textContent = word.replace("_", " "); target.className = "badge" + (TONE[word] ? " " + TONE[word] : ""); }
 function dropStatus() { reading = null; $("statusbox").hidden = true; $("statuspeers").replaceChildren(); }
 function drawStatus() {
   const box = $("statusbox"), line = $("statusline"), peers = $("statuspeers"), note = $("statusnote");
@@ -71,12 +120,15 @@ function drawStatus() {
   const age = Math.max(0, Math.round((Date.now() - reading.fetchedAt) / 1000));
   let state = reading.state;
   if (state === "running" && Date.now() - reading.fetchedAt > STALE_AFTER_MS) state = "stale";
+  badge($("statebadge"), state);
   if (state === "offline" || state === "unavailable_version" || state === "unknown") { line.textContent = state.replace("_", " ") + ": " + WORDS[state]; return; }
   const tasks = reading.tasks ? Object.entries(reading.tasks).map(([k, n]) => n + " " + k).join(", ") || "none" : "unknown";
   line.textContent = state + " (read " + age + " s ago" + (reading.version ? ", agent-hub " + reading.version : "") + "). Tasks: " + tasks + ".";
   for (const peer of reading.peers ?? []) {
-    const li = document.createElement("li");
-    li.textContent = peer.id + ": " + peer.state + (peer.attached ? "" : " (not attached)") + (peer.queued === null ? "" : ", " + peer.queued + " queued");
+    const li = document.createElement("li"), name = document.createElement("span"), state_ = document.createElement("span"), more = document.createElement("span");
+    name.textContent = peer.id + " "; badge(state_, peer.state);
+    more.textContent = (peer.attached ? "" : "not attached") + (peer.queued === null ? "" : (peer.attached ? "" : ", ") + peer.queued + " queued");
+    li.append(name, state_, more);
     peers.append(li);
   }
   if (reading.peers === null) note.textContent = "Peers: unknown (this hub did not report them).";
@@ -90,47 +142,83 @@ async function readStatus() {
   try {
     const result = await ask("status.read", { snapshot });
     if (requestGeneration !== generation) return;
-    if (!result.ok) { dropStatus(); say(result.guidance, true); return; }
+    if (!result.ok) { dropStatus(); say(result.guidance, true, result.command); return; }
     reading = result; drawStatus();
     say(result.state === "offline" ? WORDS.offline : "Status read.");
   } catch { if (requestGeneration === generation) { dropStatus(); say("The companion did not answer. Nothing was changed.", true); } }
   finally { if (requestGeneration === generation && selected) setActions(true); }
 }
 
+function choose(li, row) {
+  generation++;
+  for (const other of rows.children) { other.setAttribute("aria-selected", "false"); other.tabIndex = -1; }
+  li.setAttribute("aria-selected", "true"); li.tabIndex = 0;
+  selected = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
+  setActions(true); dropLink(); dropStatus();
+  say("Selected. Choose a screen to open, or show its status.");
+}
+function rowLines(li, row) {
+  const title = document.createElement("div"), name = document.createElement("span"), branch = document.createElement("span");
+  name.className = "name"; name.textContent = row.name; branch.className = "note"; branch.textContent = row.branch ? "  [" + row.branch + "]" : "";
+  title.append(name, branch);
+  const root = document.createElement("div");
+  root.className = "root"; root.textContent = row.root;
+  const host = document.createElement("div");
+  host.className = "note"; host.textContent = "host: " + (row.hostId ?? "not stated") + ", " + row.kind;
+  li.append(title, root, host);
+  li.searchText = [row.name, row.branch ?? "", row.root, row.hostId ?? ""].join(" ").toLowerCase();
+}
 function renderRows(list) {
-  rows.replaceChildren();
+  rows.replaceChildren(); offrows.replaceChildren();
   selected = null; setActions(false); dropLink(); dropStatus();
+  filter.value = ""; filter.hidden = list.length < FILTER_FROM;
+  let first = true, off = 0;
   for (const row of list) {
     const li = document.createElement("li");
-    li.className = "row" + (row.selectable ? "" : " off");
-    li.setAttribute("aria-selected", "false");
-    const title = document.createElement("div");
-    title.textContent = row.name + (row.branch ? "  [" + row.branch + "]" : "");
-    const root = document.createElement("div");
-    root.className = "root"; root.textContent = row.root;
-    const host = document.createElement("div");
-    host.className = "note"; host.textContent = "host: " + (row.hostId ?? "not stated") + ", " + row.kind;
-    li.append(title, root, host);
+    rowLines(li, row);
     if (row.selectable) {
-      const choose = document.createElement("button");
-      choose.type = "button"; choose.textContent = "Select";
-      choose.addEventListener("click", () => {
-        generation++;
-        for (const other of rows.children) other.setAttribute("aria-selected", "false");
-        li.setAttribute("aria-selected", "true");
-        selected = { id: row.id, hostId: row.hostId, root: row.root, kind: row.kind };
-        setActions(true); dropLink(); dropStatus();
-        say("Selected. Choose a screen to open, or show its status.");
-      });
-      li.append(choose);
+      li.className = "row"; li.setAttribute("role", "option"); li.setAttribute("aria-selected", "false"); li.tabIndex = first ? 0 : -1; first = false;
+      li.addEventListener("click", () => choose(li, row));
+      li.chooseRow = () => choose(li, row);
+      rows.append(li);
     } else {
+      li.className = "row off"; off++;
       const why = document.createElement("div");
       why.className = "note"; why.textContent = row.guidance;
       li.append(why);
+      if (row.command) {
+        const line = document.createElement("div"), command = document.createElement("code"), copy = document.createElement("button");
+        command.textContent = row.command;
+        copy.type = "button"; copy.textContent = "Copy command";
+        copy.addEventListener("click", () => copyText(row.command, copy, command));
+        line.append(command, copy);
+        li.append(line);
+      }
+      offrows.append(li);
     }
-    rows.append(li);
   }
+  $("unavailable").hidden = off === 0;
+  $("offcount").textContent = off + " not available on this Mac";
 }
+// Arrow keys move between the visible rows; Enter or Space selects the focused one, exactly as a click does.
+rows.addEventListener("keydown", event => {
+  const visible = [...rows.children].filter(li => !li.hidden), at = visible.indexOf(event.target);
+  if (at === -1) return;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const next = visible[Math.min(visible.length - 1, Math.max(0, at + (event.key === "ArrowDown" ? 1 : -1)))];
+    for (const li of rows.children) li.tabIndex = -1;
+    next.tabIndex = 0; next.focus();
+  } else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.target.chooseRow(); }
+});
+filter.addEventListener("input", () => {
+  const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  for (const li of [...rows.children, ...offrows.children]) li.hidden = !words.every(word => li.searchText.includes(word));
+  // Keep exactly one visible row reachable by Tab: the selected one when it is shown, else the first shown.
+  const visible = [...rows.children].filter(li => !li.hidden);
+  const stop = visible.find(li => li.getAttribute("aria-selected") === "true") ?? visible[0];
+  for (const li of rows.children) li.tabIndex = li === stop ? 0 : -1;
+});
 
 async function refresh() {
   const requestGeneration = ++generation;
@@ -139,9 +227,9 @@ async function refresh() {
   try {
     const result = await ask("workspaces.list", undefined);
     if (requestGeneration !== generation) return;
-    if (!result.ok) { renderRows([]); say(result.guidance, true); return; }
+    if (!result.ok) { renderRows([]); say(result.guidance, true, result.command); return; }
     renderRows(result.rows);
-    say(result.rows.length ? "Select the workspace to open." : "Orca lists no workspaces.");
+    say(result.rows.some(row => row.selectable) ? "Select the workspace to open." : result.rows.length ? "No workspace can be opened on this Mac; the reasons are listed below." : "Orca lists no workspaces.");
   } catch { if (requestGeneration === generation) { renderRows([]); say("The companion did not answer. Disable and re-enable it from Orca's plugin list.", true); } }
 }
 
@@ -153,7 +241,7 @@ async function open(kind) {
     const result = await ask("entry.open", { kind, snapshot });
     if (requestGeneration !== generation) return;
     if (!result.ok) {
-      say(result.guidance + (result.command ? "  Run this in a terminal there: " + result.command : ""), true);
+      say(result.guidance + (result.command ? " Run this in a terminal there:" : ""), true, result.command);
     } else if (result.status === "terminal_created") {
       say("A terminal was created in the workspace and is running the command. Select its tab to see it.");
     } else if (result.status === "link" && !(orca.host && orca.host.has && orca.host.has("shell.openExternal") && orca.shell && orca.shell.openExternal)) {

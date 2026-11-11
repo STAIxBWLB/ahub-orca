@@ -72,7 +72,8 @@ test("AC8: every receipt a combination names exists and says NOT RUN, with ids-a
 
 test("AC8: a remote workspace is refused before anything runs, shows the existing remote console command, and no link is opened locally", async () => {
   const s = setup({ hostId: "ssh-box" });
-  expect((await s.instance.list()).rows[0]).toMatchObject({ selectable: false, refusal: "remote" });
+  const listed = (await s.instance.list()).rows[0];
+  expect(listed).toMatchObject({ selectable: false, refusal: "remote", command: "'ahub' 'console'" }); expect(JSON.stringify(listed.command)).not.toContain(s.root);
   for (const kind of ["dashboard", "console", "family"]) {
     const r = await s.instance.open({ kind, snapshot: s.snapshot });
     expect(r).toMatchObject({ ok: false, refusal: "remote", command: "'ahub' 'console'" });
@@ -89,15 +90,15 @@ test("AC8: declaring a remote host as this Mac does not make its folder bind: th
   // A deliberately wrong setting. The remote project's path does not exist on this Mac, so it cannot bind, and a path that happens to exist is a different project that the id and root checks pin.
   const s = setup({ hostId: "ssh-box", settings: { localHostIds: "ssh-box" } });
   s.fake.setRoster([{ id: "ws-a", kind: "worktree", name: "n", path: "/home/remote-user/project-that-is-not-here", branch: null, hostId: "ssh-box" }]);
-  expect((await s.instance.list()).rows[0]).toMatchObject({ selectable: false, refusal: "unreal_root" });
+  expect((await s.instance.list()).rows[0]).toMatchObject({ selectable: false, refusal: "unreal_root" }); expect((await s.instance.list()).rows[0]!.command).toBeUndefined();
   expect(await s.instance.open({ kind: "dashboard", snapshot: { ...s.snapshot, root: "/home/remote-user/project-that-is-not-here" } })).toMatchObject({ ok: false, refusal: "unreal_root" });
   expect(s.cli.calls).toHaveLength(0);
 });
 
 test("AC8: on Windows every workspace is refused and nothing runs; the same checks stay in force elsewhere", async () => {
   const win = setup({ platform: "win32" });
-  expect((await win.instance.list()).rows[0]).toMatchObject({ selectable: false, refusal: "unsupported_platform" });
-  for (const kind of ["dashboard", "console", "family"]) expect(await win.instance.open({ kind, snapshot: win.snapshot })).toMatchObject({ ok: false, refusal: "unsupported_platform" });
+  expect((await win.instance.list()).rows[0]).toMatchObject({ selectable: false, refusal: "unsupported_platform", command: "'ahub' 'console'" });
+  for (const kind of ["dashboard", "console", "family"]) expect(await win.instance.open({ kind, snapshot: win.snapshot })).toMatchObject({ ok: false, refusal: "unsupported_platform", command: "'ahub' 'console'" });
   expect(await win.instance.status({ snapshot: win.snapshot })).toMatchObject({ ok: false, refusal: "unsupported_platform" });
   expect(win.cli.calls).toHaveLength(0); expect(win.host.calls.filter(m => m === "workspace.open" || m === "terminal.create")).toEqual([]);
   expect(companion.REFUSALS.unsupported_platform).toMatch(/not qualified/);
