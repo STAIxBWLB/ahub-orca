@@ -27,7 +27,7 @@
       { "command": "open-console", "key": "Mod+Alt+Shift+H", "when": "workspace" }
     ],
     "settings": [
-      { "key": "localHostIds", "title": "Host ids that mean this Mac", "description": "Comma separated. A workspace whose host id is not listed here is treated as remote and nothing is run for it on this Mac.", "type": "string", "default": "", "maxLength": 512, "placeholder": "e.g. local" },
+      { "key": "localHostIds", "title": "Other host ids that mean this Mac", "description": "Comma separated. Orca's own id for this machine, local, always counts. A workspace on any other host id not listed here is treated as remote and nothing is run for it on this Mac.", "type": "string", "default": "", "maxLength": 512, "placeholder": "usually empty" },
       { "key": "trustNullHostAsLocal", "title": "Treat a missing host id as this Mac", "description": "Orca leaves a workspace's host id empty for some workspaces. Turn this on only if all of yours are on this Mac.", "type": "boolean", "default": false },
       { "key": "ahubPath", "title": "ahub executable", "description": "Absolute path to the installed ahub command. Empty uses `ahub` from PATH.", "type": "string", "default": "", "maxLength": 1024, "placeholder": "/usr/local/bin/ahub" }
     ]

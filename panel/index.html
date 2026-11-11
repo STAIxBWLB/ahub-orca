@@ -184,7 +184,7 @@ function setup(text) { $("setup").hidden = !text; $("setup").textContent = text 
 function setupFromRows(list) {
   if (!list.length || list.some(row => row.selectable)) return null;
   if (list.every(row => row.refusal === "host_unknown")) return "None of these workspaces says which machine it is on. If they are all on this Mac, turn on \"Treat a missing host id as this Mac\" in " + SETTINGS + ", then click Refresh workspaces.";
-  if (list.every(row => row.refusal === "remote" || row.refusal === "host_unknown")) return "Every workspace is on another host. If one of those host ids is this Mac, add it to \"Host ids that mean this Mac\" in " + SETTINGS + ", then click Refresh workspaces.";
+  if (list.every(row => row.refusal === "remote" || row.refusal === "host_unknown")) return "Every workspace is on another host. If one of those host ids is this Mac, add it to \"Other host ids that mean this Mac\" in " + SETTINGS + ", then click Refresh workspaces.";
   return null;
 }
 // Which rows are agent-hub projects, and whether their hub runs: asked once after a list is drawn, never on a timer. A missing ahub is the one setup problem it reports; any other failure shows no badge rather than a wrong one.

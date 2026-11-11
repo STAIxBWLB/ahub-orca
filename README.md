@@ -99,7 +99,7 @@ Under **Settings → Plugins → agent-hub**:
 
 | Setting | Default | Set it when |
 | --- | --- | --- |
-| Host ids that mean this Mac (`localHostIds`) | empty | your workspaces carry a host id. List the ids that are this Mac, comma separated (for example `local`). A workspace on any other host is treated as remote and nothing is run for it here |
+| Other host ids that mean this Mac (`localHostIds`) | empty | usually never. Orca's own id for this machine, `local`, always counts. List any other ids that are this Mac, comma separated. A workspace on any other host is treated as remote and nothing is run for it here |
 | Treat a missing host id as this Mac (`trustNullHostAsLocal`) | off | Orca leaves the host id empty and **all** your workspaces are on this Mac |
 | ahub executable (`ahubPath`) | empty (uses `ahub` from `PATH`) | Orca's environment cannot find `ahub`. Give the absolute path to a file named `ahub` |
 
@@ -137,7 +137,7 @@ Every refusal says what happened and runs nothing.
 
 | Code | The panel says | Do this |
 | --- | --- | --- |
-| `host_unknown` | Orca did not say which machine this workspace is on | set "Host ids that mean this Mac", or turn on "Treat a missing host id as this Mac" if all workspaces are local, then click Refresh workspaces |
+| `host_unknown` | Orca did not say which machine this workspace is on | set "Other host ids that mean this Mac", or turn on "Treat a missing host id as this Mac" if all workspaces are local, then click Refresh workspaces |
 | `remote` | This workspace is on another host | run `ahub console` in a terminal on that host |
 | `cli_missing` | The ahub command was not found | set "ahub executable" to the absolute path of `ahub` |
 | `invalid_setting` | A plugin setting is not valid | "ahub executable" must be an absolute path to a file named `ahub` |

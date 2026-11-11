@@ -62,10 +62,11 @@ nothing: a duplicate id, a missing workspace, a truncated list, a malformed row,
 kind or folder (including a symlink that was re-pointed), a host that is not declared to be this Mac,
 and a folder that is not a real absolute folder here.
 
-Orca leaves a workspace's host id empty for some workspaces, and the API does not say what a given id
-means. The plugin therefore runs nothing locally for a host it was not told is this Mac. In the
-plugin's settings, list the host ids that are this Mac (`localHostIds`), or turn on "Treat a missing
-host id as this Mac" if all your workspaces are local. Remote workspaces are never run here: the
+Orca names the machine it runs on `local` (`orca host list`: kind `local`, "this machine"), and the
+trusted worker runs on that same host, so `local` is this Mac without any setting (#12). Any other id
+(an SSH target's `ssh-...`, or anything unknown) runs nothing locally unless the person lists it in
+`localHostIds`. Orca leaves a workspace's host id empty for some workspaces; those run nothing unless
+"Treat a missing host id as this Mac" is on. Remote workspaces are never run here: the
 panel shows the command to run on that host.
 
 ## Only the selection is kept

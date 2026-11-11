@@ -62,8 +62,8 @@ export function readInventory(raw) {
 }
 
 /**
- * What the person has said about this Mac, from plugin settings read through the host (never inferred). `localHostIds` is a comma separated list of the host ids that mean this machine;
- * `nullHostIsLocal` says a workspace with no host id is on it. Both default to nothing, so a host id the person has not declared is never run locally.
+ * What the person has said about this Mac, from plugin settings read through the host. `localHostIds` lists further host ids that mean this machine, beyond Orca's own `local`;
+ * `nullHostIsLocal` says a workspace with no host id is on it. Both default to nothing, so a host id that is neither `local` nor declared is never run locally.
  */
 export function parseSettings(raw) {
   const settings = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
@@ -76,6 +76,9 @@ export function parseSettings(raw) {
 }
 
 /** The one command shown for a workspace on another host: the existing remote console, as fixed words to run there. Never a link, never a project path. */
+/** Orca's own id for the machine it runs on (`orca host list`: kind `local`, "this machine"). The trusted worker runs on that same host, so it is this Mac without any setting. */
+export const ORCA_LOCAL_HOST = "local";
+
 export const REMOTE_COMMAND = terminalCommand(["ahub", "console"]);
 
 /** The default canonicalizer: this machine's own real path. A remote path is never resolved here, because a remote host is refused before it is reached. */
@@ -91,7 +94,7 @@ export function bindRow(row, ctx) {
   // rather than something close to right; the identity checks below are not loosened for any platform. `ctx.platform` is injected (the worker passes process.platform).
   if (ctx.platform === "win32") return refuse("unsupported_platform");
   if (row.hostId === null) { if (!ctx.settings.nullHostIsLocal) return refuse("host_unknown"); }
-  else if (!ctx.settings.localHostIds.includes(row.hostId)) return refuse("remote");
+  else if (row.hostId !== ORCA_LOCAL_HOST && !ctx.settings.localHostIds.includes(row.hostId)) return refuse("remote");
   if (!isAbsolute(row.path)) return refuse("unreal_root");
   let root;
   try { root = ctx.canonicalize(row.path); } catch { return refuse("unreal_root"); }

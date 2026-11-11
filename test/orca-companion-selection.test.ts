@@ -25,15 +25,16 @@ class StoreHost {
     return this.fake.call(method, params);
   }
 }
-function setup(options: { ahub?: OrcaCompanionFixtureCliResponse[]; settings?: Record<string, unknown> } = {}) {
+function setup(options: { ahub?: OrcaCompanionFixtureCliResponse[]; settings?: Record<string, unknown>; hostId?: string } = {}) {
+  const hostId = options.hostId ?? "local";
   const base = realpathSync(mkdtempSync(join(tmpdir(), "ahub-orca-selection-"))); dirs.push(base);
   const a = join(base, "a"), b = join(base, "b"); mkdirSync(a); mkdirSync(b);
   const fake = new FakeOrcaCompanionHost({ offeredMethods: ["workspace.list", "workspace.open"], surface: "worker", capabilities: ["workspace:read", "workspace:write"],
-    workspaces: [{ id: "ws-a", kind: "worktree", name: "a", path: a, branch: "main", hostId: "local" }, { id: "ws-b", kind: "folder", name: "b", path: b, branch: null, hostId: "local" }] });
+    workspaces: [{ id: "ws-a", kind: "worktree", name: "a", path: a, branch: "main", hostId }, { id: "ws-b", kind: "folder", name: "b", path: b, branch: null, hostId }] });
   const host = new StoreHost(fake), cli = new FakeOrcaCompanionCli({ hostId: "local", scripted: options.ahub ?? [] });
   let settings = options.settings ?? { localHostIds: "local" };
   const instance = worker.createCompanion({ host, readSettings: async () => settings, spawnCli: cli.run, log: () => {} });
-  return { a, b, fake, host, cli, instance, snapshot: { id: "ws-a", hostId: "local", root: a, kind: "worktree" }, setSettings: (value: Record<string, unknown>) => { settings = value; } };
+  return { a, b, fake, host, cli, instance, snapshot: { id: "ws-a", hostId, root: a, kind: "worktree" }, setSettings: (value: Record<string, unknown>) => { settings = value; } };
 }
 
 test("remember writes only the four binding fields, and only after they verify against a fresh inventory", async () => {
@@ -90,8 +91,8 @@ test("a remembered workspace that changed, vanished or became remote runs nothin
   s.fake.setRoster([{ id: "ws-b", kind: "folder", name: "b", path: s.b, branch: null, hostId: "local" }]);
   expect(await s.instance.runCommand("open-console")).toBe("That workspace is no longer in Orca's list. Select again.");
   expect(s.host.store.size).toBe(0); expect(s.host.terminals).toEqual([]);
-  const r = setup(); await r.instance.remember({ snapshot: r.snapshot });
-  r.setSettings({ localHostIds: "" });
+  const r = setup({ hostId: "ssh-1", settings: { localHostIds: "ssh-1" } }); await r.instance.remember({ snapshot: r.snapshot });
+  r.setSettings({ localHostIds: "" }); // the SSH host is no longer declared to be this Mac
   expect(await r.instance.runCommand("open-dashboard")).toBe("This workspace is on another host. Run `ahub console` there; nothing was run on this Mac. Command: 'ahub' 'console'");
   expect(r.cli.calls).toEqual([]);
 });
