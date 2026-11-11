@@ -166,7 +166,12 @@ export function createCompanion(ports) {
     async drop() { if (!ports.host.has("storage.delete")) return; try { await ports.host.call("storage.delete", { key: SELECTION_KEY }); } catch { /* the next recall verifies it again */ } },
   };
 
-  async function remember(input) {
+  // Store reads and writes run one at a time in call order, so the last choice is the one kept even when an earlier one's inventory read is slower, and a recall cannot drop a newer write.
+  let storeTurn = Promise.resolve();
+  const serial = fn => { const run = storeTurn.then(fn, fn); storeTurn = run.catch(() => {}); return run; };
+
+  const remember = input => serial(() => remembered(input));
+  async function remembered(input) {
     const value = exact(input, ["snapshot"]);
     if (!value || !readSnapshot(value.snapshot)) return done("selection.remember", refuse("bad_request"));
     const ctx = await context();
@@ -179,7 +184,8 @@ export function createCompanion(ports) {
   }
 
   /** The remembered selection, verified now: `{ ok: true, selection }` (null when none), or the refusal of one that no longer verifies, which is dropped when it names a different workspace. */
-  async function recalled() {
+  const recalled = () => serial(recalledNow);
+  async function recalledNow() {
     const stored = await store.get();
     if (stored === undefined) return refuse("not_offered");
     if (stored === null) return { ok: true, selection: null };

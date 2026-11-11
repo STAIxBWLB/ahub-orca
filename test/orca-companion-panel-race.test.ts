@@ -408,3 +408,16 @@ test("U4: the focused-row hint marks only a single exact match, moves the Tab st
   await f.choose(0); f.emit("workspace.changed", { context: { displayName: "b", branch: "main", terminals: [] } });
   expect(titleWords(b)).toContain("focused in Orca?"); expect(a.tabIndex).toBe(0); expect(b.tabIndex).toBe(-1); expect(f.state().selected?.id).toBe("a");
 });
+
+test("U4: two workspace events before the first list reply still keep a selection whose binding is drawn again", async () => {
+  const f = fixture(); await f.initial(); await f.choose(1); const before = f.requests.length;
+  f.emit("workspace.created", { workspace: { id: "c" } }); const first = f.requests.at(-1)!;
+  f.emit("workspace.created", { workspace: { id: "d" } }); const second = f.requests.at(-1)!;
+  second.reply.resolve({ ok: true, rows: workspaces }); first.reply.resolve({ ok: true, rows: workspaces }); await Bun.sleep(0);
+  expect(f.requests.slice(before).map(r => r.name)).toEqual(["workspaces.list", "workspaces.list"]);
+  expect(f.state().selected?.id).toBe("b"); expect(f.get("console").disabled).toBe(false);
+  expect(f.get("status").textContent).toBe("Orca's workspaces changed. Your selection is still there.");
+  const refreshing = f.get("refresh").click(); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await refreshing; // a refresh the person asks for starts clean
+  f.emit("workspace.removed", { workspaceId: "x" }); f.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await Bun.sleep(0);
+  expect(f.state().selected).toBeNull();
+});

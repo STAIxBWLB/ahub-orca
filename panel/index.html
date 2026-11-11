@@ -96,6 +96,7 @@ const FILTER_FROM = 9;        // the filter box appears only when there are more
 let listGeneration = 0;      // the rows drawn by one refresh; a projects reply belongs only to the list it was asked for
 let hubs = [];               // the last projects reply, re-applied when Orca's own events redraw the list (events never run the CLI)
 let focusedContext = null;   // Orca's last workspace.changed context: a hint only, never a selection
+let eventKeep = null;        // the selection an event redraw is carrying while its list read is in flight, so a second event before the reply keeps it too
 const MISSING = "That workspace is no longer in Orca's list. Select again.";
 const same = (a, b) => a.id === b.id && a.hostId === b.hostId && a.root === b.root && a.kind === b.kind;
 
@@ -291,6 +292,7 @@ filter.addEventListener("input", applyFilter);
 // `event` is set only when Orca's own workspace events redraw the list: the selection survives if a row with exactly its binding is drawn again. Events read Orca's list only, never the CLI.
 async function refresh(event = null) {
   const requestGeneration = ++generation;
+  eventKeep = event ? event.keep : null;
   selected = null; setActions(false); dropLink(); dropStatus();
   say("Reading Orca's workspaces...");
   try {
@@ -302,7 +304,7 @@ async function refresh(event = null) {
     const any = result.rows.some(row => row.selectable);
     say(any ? "Select the workspace to open." : result.rows.length ? "No workspace can be opened on this Mac; the reasons are listed below." : "Orca lists no workspaces.");
     if (event) {
-      drawHubs();
+      eventKeep = null; drawHubs();
       const li = event.keep && [...rows.children].find(li => same(li.binding, event.keep));
       if (li) { li.chooseRow(false); say("Orca's workspaces changed. Your selection is still there."); } else if (event.keep) say(MISSING, true);
     } else { hubs = []; if (any) { void readProjects(listGeneration); void recall(listGeneration, generation); } }
@@ -368,7 +370,7 @@ $("console").addEventListener("click", () => open("console"));
 $("family").addEventListener("click", () => open("family"));
 // Orca's workspace events (frames need no manifest entry for them). Created and removed redraw the list; changed only moves the focused-row hint.
 if (typeof orca.on === "function") {
-  for (const name of ["workspace.created", "workspace.removed"]) orca.on(name, () => { void refresh({ keep: selected }); });
+  for (const name of ["workspace.created", "workspace.removed"]) orca.on(name, () => { void refresh({ keep: selected ?? eventKeep }); });
   orca.on("workspace.changed", payload => { focusedContext = payload && payload.context ? payload.context : null; markFocused(); });
 }
 refresh();

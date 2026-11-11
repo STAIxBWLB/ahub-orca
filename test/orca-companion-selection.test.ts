@@ -12,7 +12,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 class StoreHost {
-  readonly calls: string[] = []; readonly terminals: unknown[] = []; readonly store = new Map<string, unknown>(); storage = true;
+  readonly calls: string[] = []; readonly terminals: unknown[] = []; readonly store = new Map<string, unknown>(); storage = true; slowNextList = 0;
   constructor(readonly fake: FakeOrcaCompanionHost) {}
   has(method: string) { return method.startsWith("storage.") ? this.storage : method === "terminal.create" || this.fake.has(method); }
   async call(method: string, params?: any) {
@@ -20,6 +20,7 @@ class StoreHost {
     if (method === "storage.get") return { value: this.store.has(params.key) ? structuredClone(this.store.get(params.key)) : null };
     if (method === "storage.set") { this.store.set(params.key, structuredClone(params.value)); return { ok: true }; }
     if (method === "storage.delete") { this.store.delete(params.key); return { ok: true }; }
+    if (method === "workspace.list" && this.slowNextList) { const ms = this.slowNextList; this.slowNextList = 0; await Bun.sleep(ms); }
     if (method === "terminal.create") { this.terminals.push(structuredClone(params)); return { terminalId: "t-1" }; }
     return this.fake.call(method, params);
   }
@@ -46,6 +47,14 @@ test("remember writes only the four binding fields, and only after they verify a
   expect(t.host.store.size).toBe(0);
   t.host.storage = false;
   expect(await t.instance.remember({ snapshot: t.snapshot })).toMatchObject({ ok: false, refusal: "not_offered" });
+});
+
+test("the last of two overlapping remembers is the one kept, even when the first one's inventory read is slower", async () => {
+  const s = setup(), b = { id: "ws-b", hostId: "local", root: s.b, kind: "folder" };
+  s.host.slowNextList = 60;
+  const first = s.instance.remember({ snapshot: s.snapshot }), second = s.instance.remember({ snapshot: b });
+  expect(await first).toEqual({ ok: true }); expect(await second).toEqual({ ok: true });
+  expect(s.host.store.get("selection")).toEqual(b);
 });
 
 test("recall returns the remembered selection only while it verifies, and drops one that names a different workspace", async () => {
