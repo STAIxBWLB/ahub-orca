@@ -334,7 +334,7 @@ test("U3: a list with nothing openable asks nothing more and names the setting t
   expect(f.requests.map(r => r.name)).toEqual(["workspaces.list"]);
   expect(f.get("setup").textContent).toContain("Treat a missing host id as this Mac");
   const g = fixture(); await g.listWith([remoteRow, unknown]);
-  expect(g.get("setup").textContent).toContain("Host ids that mean this Mac");
+  expect(g.get("setup").textContent).toContain("Other host ids that mean this Mac");
   const h = fixture(); await h.listWith([{ ...remoteRow, refusal: "unreal_root" }]);
   expect(h.get("setup").hidden).toBe(true); // a reason that is not about settings stays on its row
   const refreshing = h.get("refresh").click(); h.requests.at(-1)!.reply.resolve({ ok: true, rows: workspaces }); await refreshing;

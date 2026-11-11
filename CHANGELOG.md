@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix (#12): workspaces on Orca's own `local` host (the machine Orca and this plugin run on, per `orca host list`) are this Mac without any setting. Before, every workspace was refused as remote until "Host ids that mean this Mac" was filled, so a fresh install could open nothing. That setting is now "Other host ids that mean this Mac" and is usually left empty; SSH and unknown host ids, and a missing host id, are still refused as before.
+
 ## 0.1.0
 
 New in 0.1.0: the first release. An agent-hub panel in Orca lists your workspaces, marks the ones whose hub is running, and opens the existing agent-hub console, dashboard or family console for the one you pick, on this Mac only. It remembers your pick for the palette commands and `Mod+Alt+Shift+H`. It approves, assigns and stops nothing. Install with `orca plugin install STAIxBWLB/ahub-orca@v0.1.0` and approve the five capabilities Orca lists. It reads agent-hub only through the companion CLI contract v1, first shipped with agent-hub 0.37.0 (see COMPATIBILITY.md).

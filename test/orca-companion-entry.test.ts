@@ -93,11 +93,14 @@ test("AC1: duplicate, missing, truncated, malformed and changed identity each fa
 });
 
 for (const change of ["root", "host", "kind", "truncated", "missing", "settings"] as const) test(`terminal creation rechecks identity and context after workspace.open yields: ${change}`, async () => {
-  const settings = { localHostIds: "local" }, s = setup({ settings });
+  const ssh = change === "settings", host = ssh ? "ssh-1" : "local";
+  const settings = { localHostIds: host }, s = setup({ settings, rows: (r, o) => [
+    { id: "ws-a", kind: "worktree", name: "same name", path: r, branch: "same-branch", hostId: host },
+    { id: "ws-b", kind: "worktree", name: "same name", path: o, branch: "same-branch", hostId: host }] });
   let entered!: () => void, release!: () => void;
   const opened = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
   s.host.duringWorkspaceOpen = async () => { entered(); await held; };
-  const opening = s.instance.open({ kind: "console", snapshot: s.snapshot("ws-a", s.root) });
+  const opening = s.instance.open({ kind: "console", snapshot: s.snapshot("ws-a", s.root, host) });
   try {
     await opened;
     expect(s.host.terminals).toEqual([]);
@@ -107,7 +110,7 @@ for (const change of ["root", "host", "kind", "truncated", "missing", "settings"
     else if (change === "kind") s.fake.setRoster([{ ...row, kind: "folder" }]);
     else if (change === "truncated") s.fake.setRoster(s.rows, true);
     else if (change === "missing") s.fake.setRoster([s.rows[1]!]);
-    else settings.localHostIds = "other-host";
+    else settings.localHostIds = "ssh-2"; // the SSH host is no longer declared to be this Mac
     release();
     const result = await opening;
     const refusal = change === "host" || change === "settings" ? "remote" : change === "truncated" || change === "missing" ? change : "changed";
@@ -326,4 +329,13 @@ test("the panel keeps nothing: no storage, no innerHTML of CLI or workspace text
   expect(html).toContain("dropLink()");
   expect(html).toMatch(/LINK_LIVES_MS\s*=\s*55_000/);
   expect(html).not.toMatch(/console\.(log|info|debug)/);
+});
+
+test("#12: Orca's own `local` host is this Mac with no setting; any other id is remote unless declared, and a missing id unless allowed", () => {
+  const root = temp("local-host"), ctx = (settings: Record<string, unknown>) => ({ settings: companion.parseSettings(settings), canonicalize: companion.canonicalizeHere, platform: "darwin" });
+  const row = (hostId: string | null) => ({ id: "ws-a", kind: "worktree", name: "a", path: root, branch: "main", hostId });
+  expect(companion.bindRow(row("local"), ctx({}))).toMatchObject({ ok: true, binding: { hostId: "local" } });
+  expect(companion.bindRow(row("ssh-1787600572551-duc2kv"), ctx({}))).toMatchObject({ ok: false, refusal: "remote" });
+  expect(companion.bindRow(row("ssh-1787600572551-duc2kv"), ctx({ localHostIds: "ssh-1787600572551-duc2kv" }))).toMatchObject({ ok: true });
+  expect(companion.bindRow(row(null), ctx({}))).toMatchObject({ ok: false, refusal: "host_unknown" });
 });
